@@ -1,1 +1,1 @@
-# nzimmerman-ubc-github.io-lcs-PM-tutorial
+# nzimmerman-ubc-github.io-lcs-PM-demo
