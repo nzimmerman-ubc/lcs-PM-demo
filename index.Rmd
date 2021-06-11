@@ -1214,11 +1214,11 @@ df_cal_fit_long <- setDT(df_cal_fit_long)
 
 We will assess models in 2 ways: 
 
-1. Taylor Diagrams which provide a quick visual snapshot of three metrics:
+* Taylor Diagrams which provide a quick visual snapshot of three metrics:
   + Standard deviation, which is measured based on radial distance to the marker
   + Correlation coefficient
   + Centered RMSE
-2. Tabular data of R^2^ and standard error
+* Tabular data of R^2^ and standard error
 
 The Taylor Diagram is easily constructed using the "TaylorDiagram" function in the R Package "openair" [@R-openair]. To read more about interpreting Taylor Diagrams please [see the openair book, section 21](https://bookdown.org/david_carslaw/openair/sec-TaylorDiagram.html). 
 
