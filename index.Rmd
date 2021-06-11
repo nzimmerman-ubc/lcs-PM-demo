@@ -8,6 +8,7 @@ output:
     toc_float: true
     theme: yeti
     code_download: true
+    code_folding: hide
 bibliography: biblio.bib
 link-citations: yes
 ---
@@ -15,8 +16,8 @@ link-citations: yes
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE, 
-  fig.width = 7, 
-  fig.height = 5,
+  fig.width = 7,
+  fig.asp = 0.8,
   message = FALSE,
   warning = FALSE
 )
@@ -42,7 +43,7 @@ In the top-right corner of this page is a button labeled "Code" which will allow
 
 # Required packages
 
-Before beginning, we will need to install a number of packages to make this code run [@R-installr;@R-chron;@R-prodlim;@R-gtools;@R-AirSensor;@R-caret;@R-data.table;@R-tidyverse;@R-openair;@R-kableExtra;@R-broom;@R-weathercan]. This code chunk will check if you have these packages installed. If you do not have them installed, it will install them. If they are already installed, the code will load them. 
+Before beginning, we will need to install a number of packages to make this code run [@R-installr;@R-chron;@R-prodlim;@R-gtools;@R-AirSensor;@R-caret;@R-data.table;@R-tidyverse;@R-openair;@R-kableExtra;@R-broom;@R-weathercan;@R-segmented]. This code chunk will check if you have these packages installed. If you do not have them installed, it will install them. If they are already installed, the code will load them. 
 
 ```{r packages}
 if (!require(installr)) install.packages('installr')
@@ -80,6 +81,9 @@ library(broom)
 
 if (!require(weathercan)) install.packages('weathercan')
 library(weathercan)
+
+if (!require(segmented)) install.packages('segmented')
+library(segmented)
 
 ```
 
@@ -156,7 +160,7 @@ Summary PurpleAir monitor locations and naming convention used here:
 * **pat_Burnaby2**: PurpleAir ID: "NAPSID: 100119 - 2", located at: Burnaby South Regulatory Monitoring Station.
 * **pat_Burnaby3**: PurpleAir ID: "NAPSID: 100119 - 3", located: ~ 1 km east of the Burnaby South Regulatory Monitoring Station.
 
-We will download data from July 1 2020 - December 31 2020 (6 months - including a wildfire period).
+We will download data from September 1 2020 - December 31 2020 (4 months - including a wildfire smoke episode).
 
 ```{r time_series_download}
 filePath_Burnaby1 <- file.path(archiveBaseDir, "pat_Burnaby1.rda")
@@ -167,7 +171,7 @@ if ( file.exists(filePath_Burnaby1) ) {
   pat_Burnaby1 <- pat_createNew(
     pas = pas_CAN, 
     label = "NAPSID: 100119 - 1", 
-    startdate = 20200701, 
+    startdate = 20200901, 
     enddate = 20201231
   )
   save(pat_Burnaby1, file = filePath_Burnaby1)
@@ -181,7 +185,7 @@ if ( file.exists(filePath_Burnaby2) ) {
   pat_Burnaby2 <- pat_createNew(
     pas = pas_CAN, 
     label = "NAPSID: 100119-2", 
-    startdate = 20200701, 
+    startdate = 20200901, 
     enddate = 20201231
   )
   save(pat_Burnaby2, file = filePath_Burnaby2)
@@ -195,7 +199,7 @@ if ( file.exists(filePath_Burnaby3) ) {
   pat_Burnaby3 <- pat_createNew(
     pas = pas_CAN, 
     label = "NAPSID: 100119-3", 
-    startdate = 20200701, 
+    startdate = 20200901, 
     enddate = 20201231
   )
   save(pat_Burnaby3, file = filePath_Burnaby3)
@@ -223,7 +227,7 @@ pas_leaflet(pas_vancouver)
 
 Built into the AirSensor package is a validation function, "pat_externalFit". This function identifies the nearest regulatory monitoring data via the USFS Pacific Wildland Fire Sciences Lab's (PWFSL) PWFSLSmoke package [@R-PWFSLSmoke]. Sources of regulatory PM~2.5~ data made accessible by the package include: data from the United States Environmental Protection Agency (US EPA) and its AirNow air quality site, AIRSIS (password protected), the Western Regional Climate Center (WRCC) and the open source site [OpenAQ](https://openaq.org/#/). THe "pat_externalFit" function creates a time series and linear regression plot of the regulatory data vs. the PurpleAir data at a 1 hour time resolution. Below is an example built-in validation of the "Burnaby1" sensor.
 
-```{r validation_plot}
+```{r validation_plot, fig.height=12}
 validation <- pat_externalFit(pat_Burnaby1, showPlot = TRUE)
 ```
 
@@ -395,7 +399,7 @@ ggplot(df_1h,aes(x=datetime_1h,y=data_1h,group=Location,color=Location)) +
   xlab("Date") +
   ylab(expression(PM[2.5]~Concentration~(µg/m^3))) +
   ylim(0,200) +
-  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20)) +
   ggtitle("1 h Average")
 
 ggplot(df_24h,aes(x=datetime_24h,y=data_24h,group=Location,color=Location)) +
@@ -403,7 +407,7 @@ ggplot(df_24h,aes(x=datetime_24h,y=data_24h,group=Location,color=Location)) +
   xlab("Date") +
   ylab(expression(PM[2.5]~Concentration~(µg/m^3))) +
   ylim(0,200) +
-  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20)) +
   ggtitle("24 h Average")
 
 ```
@@ -422,7 +426,7 @@ ggplot(df_1h_scatter,aes(x=FEM,y=data_1h,group=Location,color=Location)) +
   xlab(expression(FEM~PM[2.5]~(µg/m^3))) +
   ylab(expression(Sensor~PM[2.5]~(µg/m^3))) +
   ggtitle("1 h Average") +
-  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20)) +
   xlim(0,30) +
   ylim(0,30) +
   geom_abline(slope=1,linetype="dashed") +
@@ -436,7 +440,7 @@ ggplot(df_24h_scatter,aes(x=FEM,y=data_24h,group=Location,color=Location)) +
   xlab(expression(FEM~PM[2.5]~(µg/m^3))) +
   ylab(expression(Sensor~PM[2.5]~(µg/m^3))) +
   ggtitle("24 h Average") +
-  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20)) +
   xlim(0,30) +
   ylim(0,30) +
   geom_abline(slope=1,linetype="dashed") +
@@ -602,31 +606,31 @@ ggplot(accuracy_long,aes(x=avg.time,y=r2,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
   xlab("Averaging Time") +
   ylab(expression(R^2)) +
-  theme(axis.text=element_text(size=12))
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=slope,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
   xlab("Averaging Time") +
   ylab("Slope") +
-  theme(axis.text=element_text(size=12))
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=intercept,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
   xlab("Averaging Time") +
   ylab(expression(Intercept~(μg/m^3))) +
-  theme(axis.text=element_text(size=12))
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=RMSE,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
   xlab("Averaging Time") +
   ylab(expression(RMSE~(μg/m^3))) +
-  theme(axis.text=element_text(size=12))
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=NRMSE,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
   xlab("Averaging Time") +
   ylab("NRMSE (%)") + 
-  theme(axis.text=element_text(size=12))
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ```
 
@@ -825,6 +829,8 @@ accuracy_low %>%
 
 ```
 
+In this scenario, the split analysis provides useful insight: the PurpleAir monitors are tending to overestimate at low concentrations (slopes > 1) and underestimate during the wildfire period (slopes < 1). This suggests we might also need piece-wise calibrations for low and high concentrations, such as what is discussed in the literature [@Malings2020]. We will demonstrate this in Part 3.
+
 ## Meteorological Conditions During Deployment
 
 We will need to download some meteorological station data to report on the meteorological conditions during the deployment. It is important to note that the internal temperature and relative humidity sensors inside low-cost sensor units are often influenced by their internal environment. In general it is strongly preferred to report externally monitored weather data. 
@@ -837,7 +843,7 @@ In this section, we download the 1 h weather data, convert it to 24 h averages u
 
 closest_station <- stations_search(coords=c(49.2162,-122.9852), interval="hour", ends_earliest = "2021")
 
-weather_1h <- weather_dl(station_ids = closest_station$station_id,start="2020-07-01",end="2020-12-31",interval="hour")
+weather_1h <- weather_dl(station_ids = closest_station$station_id,start="2020-09-01",end="2020-12-31",interval="hour")
 weather_1h <- weather_1h %>% select(time,rel_hum,temp,temp_dew) %>% rename(.,date=time)
 
 weather_24h <- timeAverage(weather_1h,avg.time="day")
@@ -846,13 +852,15 @@ ggplot(weather_24h, aes(x = temp)) +
   geom_histogram(aes(y = stat(count) / sum(count)), bins = 8,colour="black",fill="darkgoldenrod1") +
   scale_y_continuous(labels = scales::percent) +
   xlab("Temperature (°C)") +
-  ylab("Relative Probability")
+  ylab("Relative Probability") +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(weather_24h, aes(x = rel_hum)) + 
   geom_histogram(aes(y = stat(count) / sum(count)), bins = 12,colour="black",fill="darkolivegreen3") +
   scale_y_continuous(labels = scales::percent) +
   xlab("Relative Humidity (%)") +
-  ylab("Relative Probability")
+  ylab("Relative Probability") +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ```
 From these plots note that a lot of our data is at high relative humidity - it rains a lot in Vancouver! High relative humidity is known to result in overestimated low-cost PM~2.5~ sensor readings [@Malings2020].
@@ -883,14 +891,16 @@ ggplot(df_24h_all_long,aes(x=temp,y=norm_conc,group=Location,color=Location)) +
   ylim(-1,5) +
   xlab("Temperature (°C)") +
   ylab("Normalized Concentration") +
-  geom_hline(yintercept=1,linetype="dashed")
+  geom_hline(yintercept=1,linetype="dashed") +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(df_24h_all_long,aes(x=rel_hum,y=norm_conc,group=Location,color=Location)) +
   geom_point(alpha=0.7,size=2) +
   ylim(-1,5) +
   xlab("Relative Humidity (%)") +
   ylab("Normalized Concentration") +
-  geom_hline(yintercept=1,linetype="dashed")
+  geom_hline(yintercept=1,linetype="dashed") +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 
 ## Individual Sensor-FEM scatter plots coloured by relative humidity
@@ -902,7 +912,8 @@ ggplot(df_24h_all,aes(x=FEM,y=Burnaby1,colour=rel_hum)) +
   geom_abline(slope=1,linetype="dashed") +
   xlim(0,30) +
   ylim(0,30) +
-  coord_equal()
+  coord_equal() +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(df_24h_all,aes(x=FEM,y=Burnaby2,colour=rel_hum)) +
   geom_point(size=2) +
@@ -911,7 +922,8 @@ ggplot(df_24h_all,aes(x=FEM,y=Burnaby2,colour=rel_hum)) +
   geom_abline(slope=1,linetype="dashed") +
   xlim(0,30) +
   ylim(0,30) +
-  coord_equal()
+  coord_equal() +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(df_24h_all,aes(x=FEM,y=Burnaby3,colour=rel_hum)) +
   geom_point(size=2) +
@@ -920,7 +932,8 @@ ggplot(df_24h_all,aes(x=FEM,y=Burnaby3,colour=rel_hum)) +
   geom_abline(slope=1,linetype="dashed") +
   xlim(0,30) +
   ylim(0,30) +
-  coord_equal()
+  coord_equal() +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ```
 
@@ -1134,54 +1147,47 @@ data_test <- df_calibration[-data_split,]
 
 ## Build sample models
 
-As a demonstration, we will consider every linear combination of the sensor signal, the temperature, the relative humidity and the dew point in our model building. There are numerous options for calibration, but this will not be the focus of the tutorial. The primary goal is to illustrate how model performance can be assessed. As such, do not consider these models as your only option, just some example models to look at performance metrics. 
+As a demonstration, we will consider every linear combination of the sensor signal, the temperature, the relative humidity and the dew point in our model building. Given the results of separating the high concentration and low concentration and the change in slope (Part 2, Performance Metrics), we will also try three piecewise regression models. We will take advantage of the "segmented" package to determine the split point in PurpleAir monitor concentration [@R-segmented;@Muggeo2003]. We will duplicate models A, B and H using the piecewise regression approach.
+
+A note: There are numerous options for calibration, but this will not be the focus of the tutorial. The primary goal is to illustrate how model performance can be assessed. As such, do not consider these models as your only option, just some example models to look at performance metrics. 
 
 ```{r linear_models}
 # Model A: Including all parameters 
-lm_model.A <- lm(FEM ~ Burnaby1 + temp + rel_hum + temp_dew,
-                    data = data_train)
+lm_model.A <- lm(FEM ~ Burnaby1 + temp + rel_hum + temp_dew, data = data_train)
 
 # Model B: Exclude dew point
-lm_model.B <- lm(FEM ~ Burnaby1 + temp + rel_hum,
-                    data = data_train)
+lm_model.B <- lm(FEM ~ Burnaby1 + temp + rel_hum, data = data_train)
 
 # Model C: Exclude relative humidity
-lm_model.C <- lm(FEM ~ Burnaby1 + temp + temp_dew,
-                    data = data_train)
+lm_model.C <- lm(FEM ~ Burnaby1 + temp + temp_dew, data = data_train)
 
 # Model D: Exclude temperature
-lm_model.D <- lm(FEM ~ Burnaby1 + rel_hum + temp_dew,
-                    data = data_train)
+lm_model.D <- lm(FEM ~ Burnaby1 + rel_hum + temp_dew, data = data_train)
 
 # Model E: Only include sensor and temperature
-lm_model.E <- lm(FEM ~ Burnaby1 + temp,
-                    data = data_train)
+lm_model.E <- lm(FEM ~ Burnaby1 + temp, data = data_train)
 
 # Model F: Only include sensor and relative humidity
-lm_model.F <- lm(FEM ~ Burnaby1 + rel_hum,
-                    data = data_train)
+lm_model.F <- lm(FEM ~ Burnaby1 + rel_hum, data = data_train)
 
 # Model G: Only include sensor and dew point
-lm_model.G <- lm(FEM ~ Burnaby1 + temp_dew,
-                    data = data_train)
+lm_model.G <- lm(FEM ~ Burnaby1 + temp_dew, data = data_train)
 
-# Model H: Only include sensor (identical to Part 2, accuracy calculations)
-lm_model.H <- lm(FEM ~ Burnaby1,
-                    data = data_train)
+# Model H: Only include sensor as predictor of FEM
+lm_model.H <- lm(FEM ~ Burnaby1, data = data_train)
 
-## Note: I know the following models will be poor already. Mostly for demo purposes
+## Let's also try some segmented (piecewise) models based on what we learned in Part 2. We will use the 'segmented' package, and use 1 break.
 
-# Model I: Only include temperature
-lm_model.I <- lm(FEM ~ temp,
-                    data = data_train)
+# Model I: Segmented model - just sensor and FEM monitor
+lm_model.I <- segmented(lm(FEM ~ Burnaby1,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
 
-# Model I: Only include relative humidity
-lm_model.J <- lm(FEM ~ rel_hum,
-                    data = data_train)
+# Model J: Segmented model - Sensor + temp and relative humidity
+lm_model.J <- segmented(lm(FEM ~ Burnaby1+temp+rel_hum,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
 
-# Model I: Only include dew point
-lm_model.K <- lm(FEM ~ temp_dew,
-                    data = data_train)
+# Model K: Segmented model = Sensor + temp + relative humidty + dew point
+lm_model.K <- segmented(lm(FEM ~ Burnaby1+temp+rel_hum+temp_dew,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
+
+
 
 # Predict the testing data concentrations with our models
 predict_model.A <- predict(lm_model.A,data_test)
@@ -1239,8 +1245,38 @@ summary_all_models %>% select(modelID,r.squared,sigma) %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-From this, we can see that even without any corrections, the PurpleAir monitors are well correlated to the FEM monitors (model H). Adding corrections for relative humidity help a little, but the reductions in standard error (and increases in R^2^) are very small. Nevertheless, this demonstration may be useful for others considering their own calibration approaches. 
+From this, we can see that even without any corrections, the PurpleAir monitors are well correlated to the FEM monitors (model H). The segmented models (I-K) have notably better performance than the linear models across all concentration ranges, as was expected based on the Performance Metrics assessment split across 2 different concentration ranges.
 
-Congratulations! You have reached the end of the tutorial. Good luck!
+The 'segmented' model automatically chooses the break point. Let's see what break point it chose for models I-K.
+
+```{r breakpoint}
+
+breakpt.I <- summary.segmented(lm_model.I)$psi[2]
+breakpt.J <- summary.segmented(lm_model.J)$psi[2]
+breakpt.K <- summary.segmented(lm_model.K)$psi[2]
+breakpts <- c(breakpt.I,breakpt.J,breakpt.J)
+breakpts_ID <- c("Model I", "Model J", "Model K")
+df_breakpoints <- data.frame(breakpts_ID,breakpts) 
+df_breakpoints %>%
+  kbl(caption="**Summary of breakpoint location (μg/m^3^)**",digits=2, col.names=c("Model ID","Breakpoint")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+As we can see, in all models, the break point is very similar, around 32 μg/m^3^. Let's visualize this break point for our best performing model (model J). This will be the last step in our tutorial.
+
+```{r breakpoint_plot}
+df.model.J <- data_train %>%
+  mutate(seg.fit.J = broken.line(lm_model.J)$fit)
+
+ggplot(df.model.J, aes(x = Burnaby1, y = FEM)) + 
+  geom_point(alpha=0.5) +
+  geom_line(aes(x = Burnaby1, y = seg.fit.J), color = 'red', linetype='dashed',size=1) +
+  xlab(expression(Reported~Sensor~PM[2.5]~Concentration~(μg/m^3))) +
+  ylab(expression(Measured~PM[2.5]~Concentration~(μg/m^3))) +
+  ggtitle("Break point visualization: Sensor Burnaby1") +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=12))
+```
+
+Congratulations! You have reached the end of the tutorial. I hope it was informative and feel free to contact me (see the "About" page) if you have any questions.
 
 ## References
