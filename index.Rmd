@@ -156,7 +156,7 @@ Summary PurpleAir monitor locations and naming convention used here:
 * **pat_Burnaby2**: PurpleAir ID: "NAPSID: 100119 - 2", located at: Burnaby South Regulatory Monitoring Station.
 * **pat_Burnaby3**: PurpleAir ID: "NAPSID: 100119 - 3", located: ~ 1 km east of the Burnaby South Regulatory Monitoring Station.
 
-We will download data from October 1, 2020 to December 31, 2020 (Q4).
+We will download data from July 1 2020 - December 31 2020 (6 months - including a wildfire period).
 
 ```{r time_series_download}
 filePath_Burnaby1 <- file.path(archiveBaseDir, "pat_Burnaby1.rda")
@@ -167,7 +167,7 @@ if ( file.exists(filePath_Burnaby1) ) {
   pat_Burnaby1 <- pat_createNew(
     pas = pas_CAN, 
     label = "NAPSID: 100119 - 1", 
-    startdate = 20201015, 
+    startdate = 20200701, 
     enddate = 20201231
   )
   save(pat_Burnaby1, file = filePath_Burnaby1)
@@ -181,7 +181,7 @@ if ( file.exists(filePath_Burnaby2) ) {
   pat_Burnaby2 <- pat_createNew(
     pas = pas_CAN, 
     label = "NAPSID: 100119-2", 
-    startdate = 20201015, 
+    startdate = 20200701, 
     enddate = 20201231
   )
   save(pat_Burnaby2, file = filePath_Burnaby2)
@@ -195,7 +195,7 @@ if ( file.exists(filePath_Burnaby3) ) {
   pat_Burnaby3 <- pat_createNew(
     pas = pas_CAN, 
     label = "NAPSID: 100119-3", 
-    startdate = 20201015, 
+    startdate = 20200701, 
     enddate = 20201231
   )
   save(pat_Burnaby3, file = filePath_Burnaby3)
@@ -394,7 +394,7 @@ ggplot(df_1h,aes(x=datetime_1h,y=data_1h,group=Location,color=Location)) +
   geom_line(alpha=0.7,size=1) +
   xlab("Date") +
   ylab(expression(PM[2.5]~Concentration~(µg/m^3))) +
-  ylim(0,50) +
+  ylim(0,200) +
   theme(plot.title = element_text(hjust = 0.5)) +
   ggtitle("1 h Average")
 
@@ -402,7 +402,7 @@ ggplot(df_24h,aes(x=datetime_24h,y=data_24h,group=Location,color=Location)) +
   geom_line(alpha=0.7,size=1) + 
   xlab("Date") +
   ylab(expression(PM[2.5]~Concentration~(µg/m^3))) +
-  ylim(0,50) +
+  ylim(0,200) +
   theme(plot.title = element_text(hjust = 0.5)) +
   ggtitle("24 h Average")
 
@@ -690,6 +690,141 @@ precision %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   add_header_above(c("1 h" = 2, "24 h" = 2))
 ```
+### Sensor-FEM Accuracy: Separating High Concentration Events
+
+Some of our performance metrics may be skewed by periods with very high concentrations (e.g., wildfires). We will also calculate accuracy performance metrics separately during high concentration episodes and lower concentration periods. Here we will look at performance when splitting based on whether concentrations exceed 25 µg/m^3^. The results will be reported in tabular format.
+
+This is coded very similarly to the previous "Performance Metrics" subsection "Sensor-FEM Accuracy", with the caveat that dplyr "filters" were applied to split the data by the reported FEM concentration.
+
+```{r accuracy_calculations_split}
+
+## 1 hour data
+
+# Slope, intercept and R2 split by high and low using "filter". Quickly calculated using R Package 'brooms' and their tidy and glance functions
+
+model_params_1h_high <- df_1h_accuracy %>% filter(FEM >= 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_1h ~ FEM, data = .)), tidied = map(model, tidy)) %>% unnest(tidied) 
+
+model_params_1h_low <- df_1h_accuracy %>% filter(FEM < 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_1h ~ FEM, data = .)), tidied = map(model, tidy)) %>% unnest(tidied) 
+
+model_stats_1h_high <- df_1h_accuracy %>% filter(FEM >= 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_1h ~ FEM, data = .)), tidied = map(model, glance)) %>% unnest(tidied)
+
+model_stats_1h_low <- df_1h_accuracy %>% filter(FEM < 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_1h ~ FEM, data = .)), tidied = map(model, glance)) %>% unnest(tidied)
+
+slopes_1h_high <- model_params_1h_high %>% filter(term=="FEM") %>% select(Location,estimate) %>% rename(.,slope_1h=estimate)
+intercepts_1h_high <- model_params_1h_high %>% filter(term=="(Intercept)") %>% select(Location,estimate) %>% rename(.,intercept_1h=estimate)
+r2_1h_high <- model_stats_1h_high %>% select(Location,r.squared) %>% rename(.,r2_1h=r.squared)
+
+slopes_1h_low <- model_params_1h_low %>% filter(term=="FEM") %>% select(Location,estimate) %>% rename(.,slope_1h=estimate)
+intercepts_1h_low <- model_params_1h_low %>% filter(term=="(Intercept)") %>% select(Location,estimate) %>% rename(.,intercept_1h=estimate)
+r2_1h_low <- model_stats_1h_low %>% select(Location,r.squared) %>% rename(.,r2_1h=r.squared)
+
+# RMSE and NRMSE: Manual calculations
+
+RMSE_1h_high <- df_1h_accuracy %>%
+  filter(FEM >= 25) %>%
+  group_by(Location) %>%
+  summarize(RMSE_1h=sqrt(mean(sq.residual,na.rm=T)),
+            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(data_1h,na.rm=T)*100)
+
+RMSE_1h_low <- df_1h_accuracy %>%
+  filter(FEM < 25) %>%
+  group_by(Location) %>%
+  summarize(RMSE_1h=sqrt(mean(sq.residual,na.rm=T)),
+            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(data_1h,na.rm=T)*100)
+
+accuracy_1h_low <-  left_join(r2_1h_low, slopes_1h_low, by='Location') %>%
+                left_join(., intercepts_1h_low, by='Location') %>%
+                left_join(.,RMSE_1h_low,by='Location')
+
+accuracy_1h_high <-  left_join(r2_1h_high, slopes_1h_high, by='Location') %>%
+                left_join(., intercepts_1h_high, by='Location') %>%
+                left_join(.,RMSE_1h_high,by='Location')
+
+## 24 hour data
+
+# Slope, intercept and R2 split by high and low using "filter". Quickly calculated using R Package 'brooms' and their tidy and glance functions
+
+model_params_24h_high <- df_24h_accuracy %>% filter(FEM >= 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_24h ~ FEM, data = .)), tidied = map(model, tidy)) %>% unnest(tidied) 
+
+model_params_24h_low <- df_24h_accuracy %>% filter(FEM < 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_24h ~ FEM, data = .)), tidied = map(model, tidy)) %>% unnest(tidied) 
+
+model_stats_24h_high <- df_24h_accuracy %>% filter(FEM >= 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_24h ~ FEM, data = .)), tidied = map(model, glance)) %>% unnest(tidied)
+
+model_stats_24h_low <- df_24h_accuracy %>% filter(FEM < 25) %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_24h ~ FEM, data = .)), tidied = map(model, glance)) %>% unnest(tidied)
+
+slopes_24h_high <- model_params_24h_high %>% filter(term=="FEM") %>% select(Location,estimate) %>% rename(.,slope_24h=estimate)
+intercepts_24h_high <- model_params_24h_high %>% filter(term=="(Intercept)") %>% select(Location,estimate) %>% rename(.,intercept_24h=estimate)
+r2_24h_high <- model_stats_24h_high %>% select(Location,r.squared) %>% rename(.,r2_24h=r.squared)
+
+slopes_24h_low <- model_params_24h_low %>% filter(term=="FEM") %>% select(Location,estimate) %>% rename(.,slope_24h=estimate)
+intercepts_24h_low <- model_params_24h_low %>% filter(term=="(Intercept)") %>% select(Location,estimate) %>% rename(.,intercept_24h=estimate)
+r2_24h_low <- model_stats_24h_low %>% select(Location,r.squared) %>% rename(.,r2_24h=r.squared)
+
+# RMSE and NRMSE: Manual calculations
+
+RMSE_24h_high <- df_24h_accuracy %>%
+  filter(FEM >= 25) %>%
+  group_by(Location) %>%
+  summarize(RMSE_24h=sqrt(mean(sq.residual,na.rm=T)),
+            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(data_24h,na.rm=T)*100)
+
+RMSE_24h_low <- df_24h_accuracy %>%
+  filter(FEM < 25) %>%
+  group_by(Location) %>%
+  summarize(RMSE_24h=sqrt(mean(sq.residual,na.rm=T)),
+            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(data_24h,na.rm=T)*100)
+
+accuracy_24h_low <-  left_join(r2_24h_low, slopes_24h_low, by='Location') %>%
+                left_join(., intercepts_24h_low, by='Location') %>%
+                left_join(.,RMSE_24h_low,by='Location')
+
+accuracy_24h_high <-  left_join(r2_24h_high, slopes_24h_high, by='Location') %>%
+                left_join(., intercepts_24h_high, by='Location') %>%
+                left_join(.,RMSE_24h_high,by='Location')
+
+#####
+
+accuracy_low <- left_join(accuracy_1h_low,accuracy_24h_low,by='Location')
+accuracy_high <- left_join(accuracy_1h_high,accuracy_24h_high,by='Location')
+
+# We will use this grouped data later when plotting
+accuracy_long_high <- melt(setDT(accuracy_high),id.vars='Location',measure.vars=patterns("^r2_","^slope_","^intercept_","^RMSE_","^NRMSE_"),value.name = c("r2", "slope","intercept","RMSE","NRMSE"),variable.name = "avg.time")
+accuracy_long_high$avg.time <- recode_factor(accuracy_long_high$avg.time,`1`="1 h",`2`="24 h")
+
+accuracy_long_low <- melt(setDT(accuracy_high),id.vars='Location',measure.vars=patterns("^r2_","^slope_","^intercept_","^RMSE_","^NRMSE_"),value.name = c("r2", "slope","intercept","RMSE","NRMSE"),variable.name = "avg.time")
+accuracy_long_low$avg.time <- recode_factor(accuracy_long_low$avg.time,`1`="1 h",`2`="24 h")
+
+
+## Print metrics as table
+
+accuracy_mean_high <- accuracy_high %>% summarize_if(is.numeric,mean)
+accuracy_high <- bind_rows(accuracy_high,accuracy_mean_high)
+accuracy_high[4,1] = "Mean"
+
+accuracy_high %>%
+  kbl(caption="**Sensor-FEM Accuracy Metrics, >=25 μg/m^3^**", digits=2, col.names = c("Sensor ID","R^2^","Slope","Intercept","RMSE","NRMSE","R^2^","Slope","Intercept","RMSE","NRMSE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c(" " = 1, "1 h" = 5, "24 h" = 5))
+
+accuracy_mean_low <- accuracy_low %>% summarize_if(is.numeric,mean)
+accuracy_low <- bind_rows(accuracy_low,accuracy_mean_low)
+accuracy_low[4,1] = "Mean"
+
+accuracy_low %>%
+  kbl(caption="**Sensor-FEM Accuracy Metrics, <25 μg/m^3^**", digits=2, col.names = c("Sensor ID","R^2^","Slope","Intercept","RMSE","NRMSE","R^2^","Slope","Intercept","RMSE","NRMSE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c(" " = 1, "1 h" = 5, "24 h" = 5))
+
+```
+
 ## Meteorological Conditions During Deployment
 
 We will need to download some meteorological station data to report on the meteorological conditions during the deployment. It is important to note that the internal temperature and relative humidity sensors inside low-cost sensor units are often influenced by their internal environment. In general it is strongly preferred to report externally monitored weather data. 
@@ -702,7 +837,7 @@ In this section, we download the 1 h weather data, convert it to 24 h averages u
 
 closest_station <- stations_search(coords=c(49.2162,-122.9852), interval="hour", ends_earliest = "2021")
 
-weather_1h <- weather_dl(station_ids = closest_station$station_id,start="2020-10-15",end="2020-12-31",interval="hour")
+weather_1h <- weather_dl(station_ids = closest_station$station_id,start="2020-07-01",end="2020-12-31",interval="hour")
 weather_1h <- weather_1h %>% select(time,rel_hum,temp,temp_dew) %>% rename(.,date=time)
 
 weather_24h <- timeAverage(weather_1h,avg.time="day")
@@ -1018,20 +1153,20 @@ lm_model.C <- lm(FEM ~ Burnaby1 + temp + temp_dew,
 lm_model.D <- lm(FEM ~ Burnaby1 + rel_hum + temp_dew,
                     data = data_train)
 
-# Model E: Only include FEM and temperature
+# Model E: Only include sensor and temperature
 lm_model.E <- lm(FEM ~ Burnaby1 + temp,
                     data = data_train)
 
-# Model F: Only include FEM and relative humidity
+# Model F: Only include sensor and relative humidity
 lm_model.F <- lm(FEM ~ Burnaby1 + rel_hum,
                     data = data_train)
 
-# Model G: Only include FEM and dew point
+# Model G: Only include sensor and dew point
 lm_model.G <- lm(FEM ~ Burnaby1 + temp_dew,
                     data = data_train)
 
-# Model H: Only include FEM (identical to Part 2, accuracy calculations)
-lm_model.H <- lm(FEM ~ FEM,
+# Model H: Only include sensor (identical to Part 2, accuracy calculations)
+lm_model.H <- lm(FEM ~ Burnaby1,
                     data = data_train)
 
 ## Note: I know the following models will be poor already. Mostly for demo purposes
