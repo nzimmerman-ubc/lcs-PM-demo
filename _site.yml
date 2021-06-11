@@ -1,0 +1,8 @@
+output_dir: "."
+navbar:
+    title: "Low-Cost PM Sensor Tutorial"
+    left:
+      - text: "Tutorial"
+        href: index.html
+      - text: "About"
+        href: about.html

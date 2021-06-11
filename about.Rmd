@@ -1,0 +1,25 @@
+---
+output: 
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float: true 
+
+---
+<br>
+
+# About
+
+This website was created in tandem with the article submitted to the _Journal of Aerosol Science_ entitled "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". You can read the full article here: [Will link to DOI and full article when available]
+
+<br>
+
+# Contact Me
+
+If you have questions about this tutorial, feel free to email me at [nzimmerman@mech.ubc.ca](mailto:nzimmerman@mech.ubc.ca).
+
+<br>
+
+# Github
+
+You can download the R Markdown file directly at the top of the "Tutorial" page. If you'd also like to see all source code that went into this website, you can [access it on GitHub here](https://github.com/nzimmerman-ubc/lcs-PM-demo).

@@ -1,0 +1,1111 @@
+---
+title: "Low-Cost PM Sensor Tutorial"
+author: "Dr. Naomi Zimmerman"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: yeti
+    code_download: true
+bibliography: biblio.bib
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  fig.width = 7, 
+  fig.height = 5,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+# Introduction
+
+This tutorial broadly covers validation approaches for low-cost PM~2.5~ sensor data. It can be distilled into three main sections:
+
+1. Downloading sample data from the Purple Air Network
+2. Assessing this data based on the metrics outlined in the 2021 U.S. EPA Base Testing Report [@Duvall2021]
+3. Considering some approaches for calibration models and assessing their performance
+
+This tutorial is a companion to the _Journal of Aerosol Science_ article "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". When using this data or code please cite the corresponding paper:
+
+**N. Zimmerman**, (2021). "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". _Journal of Aerosol Science_, in review.
+
+One can also consider citing this web app directly:
+
+N. Zimmerman. "Low-Cost PM Sensor Tutorial." (https://nzimmerman-ubc.github.io/lcs_PM_demo/). 
+
+In the top-right corner of this page is a button labeled "Code" which will allow you to download the R Markdown file used to generate this project. To run the code on your own machine, you will need to download and install both RStudio [@RStudio] and the package "rmarkdown" [@R-rmarkdown]. See [here](https://rmarkdown.rstudio.com/lesson-1.html) to learn more.
+
+# Required packages
+
+Before beginning, we will need to install a number of packages to make this code run [@R-installr;@R-chron;@R-prodlim;@R-gtools;@R-AirSensor;@R-caret;@R-data.table;@R-tidyverse;@R-openair;@R-kableExtra;@R-broom;@R-weathercan]. This code chunk will check if you have these packages installed. If you do not have them installed, it will install them. If they are already installed, the code will load them. 
+
+```{r packages}
+if (!require(installr)) install.packages('installr')
+library(installr)
+
+if (!require(tidyverse)) install.packages('tidyverse')
+library(tidyverse)
+
+if (!require(chron)) install.packages('chron')
+library(chron)
+
+if (!require(prodlim)) install.packages('prodlim')
+library(prodlim)
+
+if (!require(gtools)) install.packages('gtools')
+library(gtools)
+
+if (!require(AirSensor)) install.packages('AirSensor')
+library(AirSensor)
+
+if (!require(caret)) install.packages('caret')
+library(caret)
+
+if (!require(data.table)) install.packages('data.table')
+library(data.table)
+
+if (!require(openair)) install.packages('openair')
+library(openair)
+
+if (!require(kableExtra)) install.packages('kableExtra')
+library(kableExtra)
+
+if (!require(broom)) install.packages('broom')
+library(broom)
+
+if (!require(weathercan)) install.packages('weathercan')
+library(weathercan)
+
+```
+
+# Part 1: Downloading Sample Data
+
+To illustrate how to work with low-cost PM sensor data, we will take advantage of a large, established network: [PurpleAir](https://www2.purpleair.com/). The tutorial will consider some sensors deployed in the Greater Vancouver Area, but this code could be easily adopted to different PurpleAir sensors by adjusting the sensor identifier. 
+
+Using the PurpleAir network in this tutorial is convenient, since the R Package "AirSensor" [@R-AirSensor] has developed easily implementable tools for downloading PurpleAir data from their network. The development of the AirSensor package is also detailed by Feenstra et al. [@Feenstra2020].
+
+## Set up a local directory
+
+The AirSensor package needs to know where processed data will live. For this report, we will specify a local archiveBaseDir where downloaded and processed data will live. The following code specifies a local directory archive, checks for its existence and creates it if needed. It also checks to see if you have downloaded the required spatial data sets (to extract PurpleAir data by Country Code) and installs them if necessary. This chunk of code was developed based on the Article ["Australia on Fire"](https://mazamascience.github.io/AirSensor/articles/articles/Australia_on_fire.html) by Mazama Science. 
+
+```{r set_up}
+
+## Create a folder in your R home directory for this tutorial called 'PM_Sensor_Tutorial'
+new_wd <- path.expand("~/PM_Sensor_Tutorial")
+if ( !dir.exists(new_wd) ) {
+  dir.create(new_wd)
+}
+setwd(new_wd)
+
+## Create a folder in 'PM_Sensor_Tutorial' for storing the downloaded PurpleAir data.
+archiveBaseDir <- path.expand("~/PM_Sensor_Tutorial/Data")
+if ( !dir.exists(archiveBaseDir) ) {
+  dir.create(archiveBaseDir)
+}
+setArchiveBaseDir(archiveBaseDir)
+
+## Checking to see if you have the required spatial data, and installing it un a sub-folder of PM_Sensor_Tutorial/Data/Spatial if needed
+if (!require(MazamaSpatialUtils)) install.packages('MazamaSpatialUtils')
+library(MazamaSpatialUtils)
+
+if ( !dir.exists('~/PM_Sensor_Tutorial/Data/Spatial') ) {
+  dir.create('~/PM_Sensor_Tutorial/Data/Spatial')
+  setSpatialDataDir('~/PM_Sensor_Tutorial/Data/Spatial')
+  installSpatialData()
+  installSpatialData('NaturalEarthAdm1')
+}
+```
+
+## Load synoptic data for Canada
+
+We will use the AirSensor pas_createNew() function to create a PurpleAir Synoptic (pas) object containing all the spatial metadata associated with PurpleAir monitors in Canada (we will call this object 'pas_CAN'). See [this Mazama Science page](https://mazamascience.github.io/AirSensor/articles/pas_introduction.html/) for more details.
+
+The following code checks to make sure the pas_CAN file exists in your archiveBaseDir directory and, if missing, recreates it.
+
+```{r data_download}
+filePath_pas <- file.path(archiveBaseDir, "pas_CAN.rda")
+
+if ( !file.exists(filePath_pas) ) {
+  initializeMazamaSpatialUtils(spatialDataDir = "~/PM_Sensor_Tutorial/Data/Spatial")
+  pas_CAN <- pas_createNew(countryCodes = "CA", includePWFSL = TRUE, lookbackDays = 1,baseUrl = "https://www.purpleair.com/json?all=true")
+  save(pas_CAN, file = filePath_pas)
+}
+
+pas_CAN <- get(load(filePath_pas))
+```
+
+## Visualize snapshot of Air Quality in Canada
+
+Now we will print a map of the results. This is all the PurpleAir units currently online in Canada. If you click on a marker, it will pop up the monitor details (most recent reading, station name, etc.). The markers are coloured by [Air Quality Index (AQI)](https://www.airnow.gov/aqi/aqi-basics/).
+```{r map}
+pas_leaflet(pas_CAN)
+```
+
+## Download our Sample Data
+
+Metro Vancouver, the local regulatory agency, has two PurpleAir monitors co-located with their 'Burnaby South' Regulatory Monitoring Site [https://gis.metrovancouver.org/maps/Air]. This is a good site for our tutorial, as there is both regulatory data and low-cost sensor data available. The U.S. EPA recommends that when assessing sensor performance, a minimum of three co-located sensors be assessed [@Duvall2021]. While this is not exactly possible here, we will also scrape data from an additional PurpleAir monitor located approximately 1 km east of the Metro Vancouver Burnaby South Regulatory Monitoring Station. We will store this data as PurpleAir Time Series (pat) objects. 
+
+Summary PurpleAir monitor locations and naming convention used here:
+
+* **pat_Burnaby1**: PurpleAir ID: "NAPSID: 100119 - 1", located at: Burnaby South Regulatory Monitoring Station.
+* **pat_Burnaby2**: PurpleAir ID: "NAPSID: 100119 - 2", located at: Burnaby South Regulatory Monitoring Station.
+* **pat_Burnaby3**: PurpleAir ID: "NAPSID: 100119 - 3", located: ~ 1 km east of the Burnaby South Regulatory Monitoring Station.
+
+We will download data from October 1, 2020 to December 31, 2020 (Q4).
+
+```{r time_series_download}
+filePath_Burnaby1 <- file.path(archiveBaseDir, "pat_Burnaby1.rda")
+
+if ( file.exists(filePath_Burnaby1) ) {
+  pat_Burnaby1 <- get(load(filePath_Burnaby1))
+} else {
+  pat_Burnaby1 <- pat_createNew(
+    pas = pas_CAN, 
+    label = "NAPSID: 100119 - 1", 
+    startdate = 20201015, 
+    enddate = 20201231
+  )
+  save(pat_Burnaby1, file = filePath_Burnaby1)
+}
+
+filePath_Burnaby2 <- file.path(archiveBaseDir, "pat_Burnaby2.rda")
+
+if ( file.exists(filePath_Burnaby2) ) {
+  pat_Burnaby2 <- get(load(filePath_Burnaby2))
+} else {
+  pat_Burnaby2 <- pat_createNew(
+    pas = pas_CAN, 
+    label = "NAPSID: 100119-2", 
+    startdate = 20201015, 
+    enddate = 20201231
+  )
+  save(pat_Burnaby2, file = filePath_Burnaby2)
+}
+
+filePath_Burnaby3 <- file.path(archiveBaseDir, "pat_Burnaby3.rda")
+
+if ( file.exists(filePath_Burnaby3) ) {
+  pat_Burnaby3 <- get(load(filePath_Burnaby3))
+} else {
+  pat_Burnaby3 <- pat_createNew(
+    pas = pas_CAN, 
+    label = "NAPSID: 100119-3", 
+    startdate = 20201015, 
+    enddate = 20201231
+  )
+  save(pat_Burnaby3, file = filePath_Burnaby3)
+}
+```
+
+## Map of PurpleAir monitors
+
+To visualize the location of these PurpleAir monitors, we can use the "pas_leaflet" function again. Note that you can see the two PurpleAir sensors on the roof of the Burnaby South station if you zoom in.
+
+```{r map2, echo=FALSE}
+lon <- pat_Burnaby1$meta$longitude
+lat <- pat_Burnaby1$meta$latitude
+pas_vancouver <- 
+  pas_CAN %>%
+  pas_filterNear(
+    longitude = lon, 
+    latitude = lat, 
+    radius = "1 km"
+  ) 
+pas_leaflet(pas_vancouver)
+```
+
+## Built-in validation in "AirSensor"
+
+Built into the AirSensor package is a validation function, "pat_externalFit". This function identifies the nearest regulatory monitoring data via the USFS Pacific Wildland Fire Sciences Lab's (PWFSL) PWFSLSmoke package [@R-PWFSLSmoke]. Sources of regulatory PM~2.5~ data made accessible by the package include: data from the United States Environmental Protection Agency (US EPA) and its AirNow air quality site, AIRSIS (password protected), the Western Regional Climate Center (WRCC) and the open source site [OpenAQ](https://openaq.org/#/). THe "pat_externalFit" function creates a time series and linear regression plot of the regulatory data vs. the PurpleAir data at a 1 hour time resolution. Below is an example built-in validation of the "Burnaby1" sensor.
+
+```{r validation_plot}
+validation <- pat_externalFit(pat_Burnaby1, showPlot = TRUE)
+```
+
+## Extract data for Part 2.
+
+While the built-in validation from AirSensor is a good start, we are interested in digging deeper into the data and its performance. Before we can do this, we need to store the Regulatory Monitoring data (short form: FRM/FEM data; FRM = Federal Reference Method, FEM = Federal Equivalent Method). We will extract the following:
+
+* 1 h average data from all three PurpleAir monitors ("Burnaby1", "Burnaby2", "Burnaby3")
+* 1 h average from the closest regulatory monitor (the Metro Vancouver Burnaby South station)
+
+* 24 h average data from all three PurpleAir monitors ("Burnaby1", "Burnaby2", "Burnaby3")
+* 24 h average data from the closest regulatory monitor (the Metro Vancouver Burnaby South station)
+
+There are a few data cleaning and organzing steps, but the output is two data frames:
+
+1. "df_1h": a data frame with all of the 1 h averaged data
+2. "df_24h": a data frame with all of the 24 hour averaged data
+
+Let's start with the hourly data:
+
+```{r data_hourly}
+
+# Get all Purple Air Sensor from Burnaby South # 1
+hourlyData1 <- 
+  pat_Burnaby1 %>%
+  pat_aggregate() %>%
+  pat_extractData()
+
+# Get all Purple Air Sensor from Burnaby South # 2
+hourlyData2 <- 
+  pat_Burnaby2 %>%
+  pat_aggregate() %>%
+  pat_extractData()
+
+# Get all Purple Air Sensor from Gilley Ave (1 km East)
+hourlyData3 <- 
+  pat_Burnaby3 %>%
+  pat_aggregate() %>%
+  pat_extractData()
+
+# Add AB channel (how PurpleAir reports concentrations) and Pull Relevant Data for Analysis
+hourlyData1 <- mutate(hourlyData1,pm25_AB = (pm25_A + pm25_B)/2)
+data_1h_Burnaby1 <- pull(hourlyData1,pm25_AB)
+
+
+hourlyData2 <- mutate(hourlyData2,pm25_AB = (pm25_A + pm25_B)/2)
+data_1h_Burnaby2 <- pull(hourlyData2,pm25_AB)
+
+hourlyData3 <- mutate(hourlyData3,pm25_AB = (pm25_A + pm25_B)/2)
+data_1h_Burnaby3 <- pull(hourlyData3,pm25_AB)
+
+
+# Get the PWFSL monitor data (Regulatory Data)
+
+monitorID <- pat_Burnaby1$meta$pwfsl_closestMonitorID
+tlim <- range(hourlyData1$datetime)
+
+pwfsl_monitor <-
+    PWFSLSmoke::monitor_load(tlim[1], tlim[2], monitorIDs = monitorID) %>%
+    PWFSLSmoke::monitor_subset(tlim = tlim)
+
+pwfsl_data_1h <-
+    pwfsl_monitor %>%
+    PWFSLSmoke::monitor_extractData()
+
+names(pwfsl_data_1h) <- c("date", "pwfsl_pm25")
+data_1h_FEM <- pull(pwfsl_data_1h,pwfsl_pm25)
+datetime_1h <- pull(pwfsl_data_1h,date)
+
+
+# Combine all data into a data frame
+
+df_1h <- tibble(datetime_1h,data_1h_FEM,data_1h_Burnaby1,data_1h_Burnaby2,data_1h_Burnaby3)
+df_1h <- gather(df_1h,Location,data_1h,-datetime_1h)
+df_1h$Location = df_1h$Location %>% fct_relabel(str_replace, "data_1h_", "")
+
+```
+
+Now we will organize the 24 h averaged data:
+
+```{r data_daily}
+
+# Get all Purple Air Sensor from Burnaby South # 1
+dailyData1 <- 
+  pat_Burnaby1 %>%
+  pat_aggregate(unit="hours",count=24) %>%
+  pat_extractData()
+
+# Get all Purple Air Sensor from Burnaby South # 2
+dailyData2 <- 
+  pat_Burnaby2 %>%
+  pat_aggregate(unit="hours",count=24) %>%
+  pat_extractData()
+
+# Get all Purple Air Sensor from Gilley Ave (1 km East)
+dailyData3 <- 
+  pat_Burnaby3 %>%
+  pat_aggregate(unit="hours",count=24) %>%
+  pat_extractData()
+
+# Add AB channel (how PurpleAir reports concentrations) and Pull Relevant Data for Analysis
+dailyData1 <- mutate(dailyData1,pm25_AB = (pm25_A + pm25_B)/2)
+data_24h_Burnaby1 <- pull(dailyData1,pm25_AB)
+
+
+dailyData2 <- mutate(dailyData2,pm25_AB = (pm25_A + pm25_B)/2)
+data_24h_Burnaby2 <- pull(dailyData2,pm25_AB)
+
+dailyData3 <- mutate(dailyData3,pm25_AB = (pm25_A + pm25_B)/2)
+data_24h_Burnaby3 <- pull(dailyData3,pm25_AB)
+
+
+# Get the PWFSL monitor data (Regulatory Data)
+monitorID <- pat_Burnaby1$meta$pwfsl_closestMonitorID
+tlim <- range(dailyData1$datetime)
+
+pwfsl_monitor <-
+    PWFSLSmoke::monitor_load(tlim[1], tlim[2], monitorIDs = monitorID) %>%
+    PWFSLSmoke::monitor_subset(tlim = tlim)
+
+pwfsl_data_24h <-
+    pwfsl_monitor %>%
+    PWFSLSmoke::monitor_extractData()
+
+names(pwfsl_data_24h) <- c("date", "pwfsl_pm25")
+pwfsl_data_24h <- timeAverage(pwfsl_data_24h,period="1 day")
+
+data_24h_FEM <- pull(pwfsl_data_24h,pwfsl_pm25)
+datetime_24h <- pull(pwfsl_data_24h,date)
+
+
+# Combine all data into a data frame
+
+df_24h <- tibble(datetime_24h,data_24h_FEM,data_24h_Burnaby1,data_24h_Burnaby2,data_24h_Burnaby3)
+df_24h <- gather(df_24h,Location,data_24h,-datetime_24h)
+df_24h$Location = df_24h$Location %>% fct_relabel(str_replace, "data_24h_", "")
+
+```
+
+Now we have everything we need to proceed to Part 2 of this tutorial (assessing sensor performance according to new U.S. EPA Base Testing Protocols).
+
+# Part 2: U.S. EPA Base Testing Metrics
+
+When the U.S. EPA released their performance testing protocols for fine particulate matter sensors, they also released a ["Fillable Reporting Template"](https://cfpub.epa.gov/si/si_public_file_download.cfm?p_download_id=542104&Lab=CEMM). The aim of the U.S. EPA report was an attempt to standardize the way sensor performance is reported. To that end, this part of the tutorial builds all of the relevant plots and tables required in the Fillable Report. We will use our three Burnaby South PurpleAir monitors for this purpose.
+
+This analysis is not extensive; there are numerous details and caveats mentioned within the full U.S. EPA report [@Duvall2021]. It is strongly recommended that in addition to this tutorial, any low-cost PM sensor users read the U.S. EPA report in full. Additionally, this tutorial is only applicable to "Base Testing" (i.e., field tests). The U.S. EPA also recommends "Enhanced Testing" based on lab-based analyses. This is not covered here.  
+
+This tutorial covers the following elements of the Fillable Report for Base Testing:
+
+* Time Series Plots
+* Scatter Plots: Comparison to FRM/FEM
+* Performance Metrics 
+  + Sensor-FRM/FEM Accuracy
+  + Sensor-Sensor Precision
+* Meteorological Conditions During Deployment
+* Meteorological Influence
+* Individual Sensor-FRM/FEM Scatter Plots
+* Tabular Statistics
+
+
+## Time Series Plots
+
+Here we plot time series for all three PurpleAir monitors and the FRM/FEM monitor for both 1 h and 24 h average PM~2.5~ concentrations.
+
+``` {r time_series, fig.show="hold", out.width="50%"}
+
+ggplot(df_1h,aes(x=datetime_1h,y=data_1h,group=Location,color=Location)) +
+  geom_line(alpha=0.7,size=1) +
+  xlab("Date") +
+  ylab(expression(PM[2.5]~Concentration~(µg/m^3))) +
+  ylim(0,50) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle("1 h Average")
+
+ggplot(df_24h,aes(x=datetime_24h,y=data_24h,group=Location,color=Location)) +
+  geom_line(alpha=0.7,size=1) + 
+  xlab("Date") +
+  ylab(expression(PM[2.5]~Concentration~(µg/m^3))) +
+  ylim(0,50) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle("24 h Average")
+
+```
+From the time series plots, we clearly see a period where the PurpleAir sensors are overestimating PM~2.5~ concentrations (early October). The scale on the y-axis is also influenced by a wildfire smoke episode which occurred in mid-September 2020.
+
+## Scatter Plots: Comparison to FRM/FEM
+
+Here we scatter plots of all three PurpleAir monitors vs. the FRM/FEM monitor for both 1 h and 24 h average PM~2.5~ concentrations. There is also a 1:1 line added to quickly assess whether the PurpleAir monitors are over- or under-estimating.
+
+``` {r scatter_plot,fig.show="hold", out.width="50%"}
+df_1h_scatter <- spread(df_1h,Location,data_1h)
+df_1h_scatter <- gather(df_1h_scatter,Location,data_1h,-datetime_1h,-FEM)
+
+ggplot(df_1h_scatter,aes(x=FEM,y=data_1h,group=Location,color=Location)) +
+  geom_point(alpha=0.7,size=1) +
+  xlab(expression(FEM~PM[2.5]~(µg/m^3))) +
+  ylab(expression(Sensor~PM[2.5]~(µg/m^3))) +
+  ggtitle("1 h Average") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlim(0,30) +
+  ylim(0,30) +
+  geom_abline(slope=1,linetype="dashed") +
+  coord_equal()
+
+df_24h_scatter <- spread(df_24h,Location,data_24h)
+df_24h_scatter <- gather(df_24h_scatter,Location,data_24h,-datetime_24h,-FEM)
+
+ggplot(df_24h_scatter,aes(x=FEM,y=data_24h,group=Location,color=Location)) +
+  geom_point(alpha=0.7,size=2) +
+  xlab(expression(FEM~PM[2.5]~(µg/m^3))) +
+  ylab(expression(Sensor~PM[2.5]~(µg/m^3))) +
+  ggtitle("24 h Average") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlim(0,30) +
+  ylim(0,30) +
+  geom_abline(slope=1,linetype="dashed") +
+  coord_equal()
+
+```
+From these scatter plots zoomed in to 30 μg/m^3^ , we can see that the PurpleAir monitors tend to slightly overestimate concentrations (data falls above 1:1 line). We will explicitly calculate the slope in the "Performance Metrics" section. 
+
+## Performance Metrics
+
+The U.S. EPA PM~2.5~ Testing Report recommends reporting on the following metrics:
+
+* Sensor Accuracy Metrics
+  + Coefficient of Determination (R^2^)
+  + Slope
+  + Intercept
+  + Root Mean Square Error (RMSE)
+  + Normalized Root Mean Square Error (NRMSE)
+* Sensor Precision Metrics
+  + Standard Deviation (SD)
+  + Coefficient of Variation (CV)
+  
+These are first defined and then calculated in the respective sub-sections. For all equations in this section we will assume that x is the FEM/FRM data and y is the sensor data.
+
+**Coefficient of Determination (R^2^)**
+
+The coefficient of determination is a metric that assess how differences in one variable can be explained by the difference in a second variable. 
+
+$$R^2 = 1-\frac{\sum(y_i -x_i)^2}{\sum(y_i-\bar{y})^2}$$
+**Slope (m)**
+
+Slope is calculated by finding the ratio of the "vertical change" (rise) to the "horizontal change" (run) between (any) two distinct points on a line. For a simple linear regression between the FEM/FRM data (x) and the sensor data (y), it is calculated as: 
+
+$$m=\frac{\sum(y_i-\bar{y})\times(x_i-\bar{x})}{\sum(x_i-\bar{x})^2}$$
+**Intercept (b)**
+
+This is the value at which the fitted line from a simple linear regression crosses the y-axis. For a simple linear regression between the FEM/FRM data (x) and the sensor data (y), it is calculated as: 
+
+$$ b = \bar{y} - m\times\bar{x}$$
+
+**Root Mean Square Error (RMSE)**
+
+The RMSE is measure of the differences between the sensor data (y) and the FEM/FRM monitor data (x).
+
+$$RMSE=\sqrt{\frac{1}{N}\sum_{i=1}^{N}(y_i -x_i)^2}$$
+
+If you wish to calculate one RMSE across multiple (M) sensors, the following adjusted formula is used:
+
+$$RMSE=\sqrt{\frac{1}{N\times M}\sum_{j=1}^{M}\sum_{i=1}^{N}(y_{ij} -x_i)^2}$$
+**Normalized Root Mean Square Error (NRMSE)**
+
+The NRMSE helps account for periods when ambient concentrations are high (which may skew the RMSE). It is calculated by normalizing the RMSE by the average concentration measured by the FEM/FRM monitor.
+
+$$NRMSE = \frac{RMSE}{\bar{y}}\times100$$
+
+**Standard Deviation**
+
+This is the standard deviation of the sensor PM_2.5_ concentration measurements. It is calculated using data from all co-deployed low-cost sensors. It is defined as follows:
+
+$$SD=\sqrt{\frac{1}{(N\times M)-1}\sum_{j=1}^{M}\sum_{d=1}^{N}(y_{dj} -\bar{y_d})^2}$$
+
+Where M is the number of identical sensors operated simultaneously, N is the number of periods during which all instruments are operating and reporting valid data, x~dj~ is the average concentration for day or hour _d_ and sensor _j_, and $\bar{y_d}$ is the average concentration across all sensors for day or hour _d_.
+
+**Coefficient of Variation (CV)**
+
+This is the relative standard deviation (SD) divided by the deployment averaged sensor PM~2.5~ concentration across the field test. It is defined as follows:
+
+$$CV= \frac{SD}{\bar{y}}\times 100$$
+Where $\bar{y}$ is the deployment averaged sensor PM_2.5_ concentration for the field test.
+
+### Sensor-FRM/FEM Accuracy
+
+We will calculate accuracy metrics for both hourly and daily averaging periods. We will also provide tabular statistics, as recommended.
+We will use built-in linear regression functions in R to calculate slope, intercept, and R^2^. RMSE and NRMSE are calculated manually. At the end of this code chunk the data are reported in tabular format, followed by a section plotting the results. 
+
+```{r accuracy_calculations}
+
+## 1 hour data
+
+# Add a column to our data frame with the square residual. This is helpful for RMSE calculations.
+
+df_1h_accuracy <- df_1h_scatter %>%
+  mutate(sq.residual=(data_1h - FEM)^2)
+
+# Slope, intercept and R2. Quickly calculated using R Package 'brooms' and their tidy and glance functions
+
+model_params_1h <- df_1h_accuracy %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_1h ~ FEM, data = .)), tidied = map(model, tidy)) %>% unnest(tidied) 
+
+model_stats_1h <- df_1h_accuracy %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_1h ~ FEM, data = .)), tidied = map(model, glance)) %>% unnest(tidied)
+
+slopes_1h <- model_params_1h %>% filter(term=="FEM") %>% select(Location,estimate) %>% rename(.,slope_1h=estimate)
+intercepts_1h <- model_params_1h %>% filter(term=="(Intercept)") %>% select(Location,estimate) %>% rename(.,intercept_1h=estimate)
+r2_1h <- model_stats_1h %>% select(Location,r.squared) %>% rename(.,r2_1h=r.squared)
+
+# RMSE and NRMSE: Manual calculations
+
+RMSE_1h <- df_1h_accuracy %>%
+  group_by(Location) %>%
+  summarize(RMSE_1h=sqrt(mean(sq.residual,na.rm=T)),
+            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(data_1h,na.rm=T)*100)
+
+accuracy_1h <-  left_join(r2_1h, slopes_1h, by='Location') %>%
+                left_join(., intercepts_1h, by='Location') %>%
+                left_join(.,RMSE_1h,by='Location')
+
+## 24 hour data
+
+# Add a column to our data frame with the square residual. Helpful for RMSE calculations.
+df_24h_accuracy <- df_24h_scatter %>%
+  mutate(sq.residual=(data_24h - FEM)^2)
+
+# Slope, intercept and R2. Quickly calculated using R Package 'brooms' and their tidy and glance functions
+
+model_params_24h <- df_24h_accuracy %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_24h ~ FEM, data = .)), tidied = map(model, tidy)) %>% unnest(tidied) 
+
+model_stats_24h <- df_24h_accuracy %>% nest(data = -Location) %>% 
+  mutate(model = map(data, ~lm(data_24h ~ FEM, data = .)), tidied = map(model, glance)) %>% unnest(tidied)
+
+slopes_24h <- model_params_24h %>% filter(term=="FEM") %>% select(Location,estimate) %>% rename(.,slope_24h=estimate)
+intercepts_24h <- model_params_24h %>% filter(term=="(Intercept)") %>% select(Location,estimate) %>% rename(.,intercept_24h=estimate)
+r2_24h <- model_stats_24h %>% select(Location,r.squared) %>% rename(.,r2_24h=r.squared)
+
+# RMSE and NRMSE: : Manual calculations
+
+RMSE_24h <- df_24h_accuracy %>%
+  group_by(Location) %>%
+  summarize(RMSE_24h=sqrt(mean(sq.residual,na.rm=T)),
+            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(data_24h,na.rm=T)*100)
+
+accuracy_24h <-  left_join(r2_24h, slopes_24h, by='Location') %>%
+                left_join(., intercepts_24h, by='Location') %>%
+                left_join(.,RMSE_24h,by='Location')
+
+accuracy <- left_join(accuracy_1h,accuracy_24h,by='Location')
+
+# We will use this grouped data later when plotting
+accuracy_long <- melt(setDT(accuracy),id.vars='Location',measure.vars=patterns("^r2_","^slope_","^intercept_","^RMSE_","^NRMSE_"),value.name = c("r2", "slope","intercept","RMSE","NRMSE"),variable.name = "avg.time")
+accuracy_long$avg.time <- recode_factor(accuracy_long$avg.time,`1`="1 h",`2`="24 h")
+
+
+## Print metrics as table
+
+accuracy_mean <- accuracy %>% summarize_if(is.numeric,mean)
+accuracy <- bind_rows(accuracy,accuracy_mean)
+accuracy[4,1] = "Mean"
+
+accuracy %>%
+  kbl(caption="**Sensor-FEM Accuracy Metrics**", digits=2, col.names = c("Sensor ID","R^2^","Slope","Intercept","RMSE","NRMSE","R^2^","Slope","Intercept","RMSE","NRMSE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c(" " = 1, "1 h" = 5, "24 h" = 5))
+
+```
+
+Now we will plot the results using box plots. 
+
+```{r plot_accuracy, fig.show="hold", out.width="50%"}
+# Prep data for box plots
+
+ggplot(accuracy_long,aes(x=avg.time,y=r2,fill=avg.time)) +
+  geom_boxplot(show.legend = F) +
+  xlab("Averaging Time") +
+  ylab(expression(R^2)) +
+  theme(axis.text=element_text(size=12))
+
+ggplot(accuracy_long,aes(x=avg.time,y=slope,fill=avg.time)) +
+  geom_boxplot(show.legend = F) +
+  xlab("Averaging Time") +
+  ylab("Slope") +
+  theme(axis.text=element_text(size=12))
+
+ggplot(accuracy_long,aes(x=avg.time,y=intercept,fill=avg.time)) +
+  geom_boxplot(show.legend = F) +
+  xlab("Averaging Time") +
+  ylab(expression(Intercept~(μg/m^3))) +
+  theme(axis.text=element_text(size=12))
+
+ggplot(accuracy_long,aes(x=avg.time,y=RMSE,fill=avg.time)) +
+  geom_boxplot(show.legend = F) +
+  xlab("Averaging Time") +
+  ylab(expression(RMSE~(μg/m^3))) +
+  theme(axis.text=element_text(size=12))
+
+ggplot(accuracy_long,aes(x=avg.time,y=NRMSE,fill=avg.time)) +
+  geom_boxplot(show.legend = F) +
+  xlab("Averaging Time") +
+  ylab("NRMSE (%)") + 
+  theme(axis.text=element_text(size=12))
+
+```
+
+### Sensor-Sensor Precision
+
+We will calculate sensor-sensor precision metrics for both hourly and daily averaging periods. We will also provide tabular statistics, as recommended.
+SD and CV are calculated manually. At the end of this code chunk the data are reported in tabular format. Since only one value is reported for SD and CV (%), there are no plots, only tabular data. 
+
+```{r precision}
+## 1 hour
+
+df_1h_precision <- spread(df_1h,Location,data_1h) 
+
+# Calculate the average across all three PurpleAir sensors using rowMeans. Save as new column "avg_1h"
+df_1h_precision <- df_1h_precision %>%
+  mutate(., avg_1h = rowMeans(select(., starts_with("Burnaby")), na.rm = TRUE)) 
+
+# Calculate the square residual of each sensor vs. the mean across sensors
+df_1h_precision <- df_1h_precision %>%
+  mutate(.,sq.resid.Burnaby1 = (Burnaby1-avg_1h)^2,sq.resid.Burnaby2 = (Burnaby2-avg_1h)^2,sq.resid.Burnaby3 = (Burnaby3-avg_1h)^2) 
+ 
+# Calculate the sum of the square residual for each sensor
+sum.sq.resid_1h  <- df_1h_precision %>%
+  summarize(sum.sq.resid.Burnaby1 = sum(sq.resid.Burnaby1),
+            sum.sq.resid.Burnaby2 = sum(sq.resid.Burnaby2),
+            sum.sq.resid.Burnaby3 = sum(sq.resid.Burnaby3))
+
+# Compute SD and CV (%)
+SD_1h = sqrt(sum(sum.sq.resid_1h)/((3*nrow(df_1h_precision))-1))
+avg_1h_all <- mean(df_1h_precision$avg_1h)
+CV_1h <- SD_1h / avg_1h_all * 100
+
+## 24 hour
+df_24h_precision <- spread(df_24h,Location,data_24h) 
+
+# Calculate the average across all three PurpleAir sensors using rowMeans. Save as new column "avg_24h"
+df_24h_precision <- df_24h_precision %>%
+  mutate(., avg_24h = rowMeans(select(., starts_with("Burnaby")), na.rm = TRUE)) 
+
+# Calculate the square residual of each sensor vs. the mean across sensors
+df_24h_precision <- df_24h_precision %>%
+  mutate(.,sq.resid.Burnaby1 = (Burnaby1-avg_24h)^2,sq.resid.Burnaby2 = (Burnaby2-avg_24h)^2,sq.resid.Burnaby3 = (Burnaby3-avg_24h)^2) 
+
+# Calculate the sum of the square residual for each sensor 
+sum.sq.resid_24h  <- df_24h_precision %>%
+  summarize(sum.sq.resid.Burnaby1 = sum(sq.resid.Burnaby1),
+            sum.sq.resid.Burnaby2 = sum(sq.resid.Burnaby2),
+            sum.sq.resid.Burnaby3 = sum(sq.resid.Burnaby3))
+
+# Compute SD and CV (%)
+SD_24h = sqrt(sum(sum.sq.resid_24h)/((3*nrow(df_24h_precision))-1))
+avg_24h_all <- mean(df_24h_precision$avg_24h)
+CV_24h <- SD_24h / avg_24h_all * 100
+
+## Print metrics as table
+
+precision <- as.tibble(cbind(CV_1h,SD_1h,CV_24h,SD_24h))
+
+precision %>%
+  kbl(caption="**Sensor Precision Metrics**", digits=2, col.names = c("SD (μg/m^3^)","CV (%)","SD (μg/m^3^)","CV (%)")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c("1 h" = 2, "24 h" = 2))
+```
+## Meteorological Conditions During Deployment
+
+We will need to download some meteorological station data to report on the meteorological conditions during the deployment. It is important to note that the internal temperature and relative humidity sensors inside low-cost sensor units are often influenced by their internal environment. In general it is strongly preferred to report externally monitored weather data. 
+
+To get regulatory weather station data in Canada, we will use the "weathercan" package [@R-weathercan]. If you want other meteorological data for other parts of the world, this section of code would need to be adapted, but that is outside the scope of this tutorial. Consider checking your local regulatory monitoring network or using R packages designed to import weather from elsewhere (e.g., "rnoaa" for NOAA data).
+
+In this section, we download the 1 h weather data, convert it to 24 h averages using the "timeAverage" function in the R Package "openair" [@R-openair], and plot histograms. 
+
+```{r met_condition, fig.show="hold", out.width="50%"}
+
+closest_station <- stations_search(coords=c(49.2162,-122.9852), interval="hour", ends_earliest = "2021")
+
+weather_1h <- weather_dl(station_ids = closest_station$station_id,start="2020-10-15",end="2020-12-31",interval="hour")
+weather_1h <- weather_1h %>% select(time,rel_hum,temp,temp_dew) %>% rename(.,date=time)
+
+weather_24h <- timeAverage(weather_1h,avg.time="day")
+
+ggplot(weather_24h, aes(x = temp)) + 
+  geom_histogram(aes(y = stat(count) / sum(count)), bins = 8,colour="black",fill="darkgoldenrod1") +
+  scale_y_continuous(labels = scales::percent) +
+  xlab("Temperature (°C)") +
+  ylab("Relative Probability")
+
+ggplot(weather_24h, aes(x = rel_hum)) + 
+  geom_histogram(aes(y = stat(count) / sum(count)), bins = 12,colour="black",fill="darkolivegreen3") +
+  scale_y_continuous(labels = scales::percent) +
+  xlab("Relative Humidity (%)") +
+  ylab("Relative Probability")
+
+```
+From these plots note that a lot of our data is at high relative humidity - it rains a lot in Vancouver! High relative humidity is known to result in overestimated low-cost PM~2.5~ sensor readings [@Malings2020].
+
+## Meteorological Influence
+
+In this section, we plot the normalized PM~2.5~ concentration (defined as Sensor PM~2.5~ / FEM PM~2.5~) for each 24 hour period against the monitored temperature and relative humidity. We will also show scatter plots of FEM vs Sensor PM~2.5~ as coloured by relative humidity. To do this, we must first join our weather data to our sensor data and then calculate normalized concentrations. When we are finished, we will plot the results.
+
+```{r met_influence, fig.show="hold", out.width="50%"}
+
+## Prep the data - Add weather data and calculate normalized concentrations
+
+weather_24h <- rename(weather_24h,datetime_24h = date)
+df_24h_all <- full_join(df_24h_precision,weather_24h,by="datetime_24h") %>% select(-avg_24h,-sq.resid.Burnaby1,-sq.resid.Burnaby2,-sq.resid.Burnaby3)
+
+# Add new columns for normalized PM2.5 data
+df_24h_all <- df_24h_all %>%
+  mutate(.,norm_Burnaby1=Burnaby1/FEM,norm_Burnaby2=Burnaby2/FEM,norm_Burnaby3 = Burnaby3/FEM)
+
+# Let's pivot this into a convenient format for plotting
+df_24h_all_long <- df_24h_all %>% 
+  pivot_longer(cols=starts_with("norm_"),names_to="Location",names_prefix="norm_",values_to="norm_conc")
+
+## Plot the data
+
+ggplot(df_24h_all_long,aes(x=temp,y=norm_conc,group=Location,color=Location)) +
+  geom_point(alpha=0.7,size=2) +
+  ylim(-1,5) +
+  xlab("Temperature (°C)") +
+  ylab("Normalized Concentration") +
+  geom_hline(yintercept=1,linetype="dashed")
+
+ggplot(df_24h_all_long,aes(x=rel_hum,y=norm_conc,group=Location,color=Location)) +
+  geom_point(alpha=0.7,size=2) +
+  ylim(-1,5) +
+  xlab("Relative Humidity (%)") +
+  ylab("Normalized Concentration") +
+  geom_hline(yintercept=1,linetype="dashed")
+
+
+## Individual Sensor-FEM scatter plots coloured by relative humidity
+
+ggplot(df_24h_all,aes(x=FEM,y=Burnaby1,colour=rel_hum)) +
+  geom_point(size=2) +
+  scale_colour_gradient2(low="blue", mid="white", high="red", midpoint=50,limits=c(0,100)) +
+  labs(title="Burnaby 1", x=expression(FEM/FRM~PM[2.5]~Concentration~(μg/m^3)), y=expression(Sensor~PM[2.5]~Concentration~(μg/m^3)), color="RH (%)") +
+  geom_abline(slope=1,linetype="dashed") +
+  xlim(0,30) +
+  ylim(0,30) +
+  coord_equal()
+
+ggplot(df_24h_all,aes(x=FEM,y=Burnaby2,colour=rel_hum)) +
+  geom_point(size=2) +
+  scale_colour_gradient2(low="blue", mid="white", high="red", midpoint=50,limits=c(0,100)) +
+  labs(title="Burnaby 2", x=expression(FEM/FRM~PM[2.5]~Concentration~(μg/m^3)), y=expression(Sensor~PM[2.5]~Concentration~(μg/m^3)), color="RH (%)") +
+  geom_abline(slope=1,linetype="dashed") +
+  xlim(0,30) +
+  ylim(0,30) +
+  coord_equal()
+
+ggplot(df_24h_all,aes(x=FEM,y=Burnaby3,colour=rel_hum)) +
+  geom_point(size=2) +
+  scale_colour_gradient2(low="blue", mid="white", high="red", midpoint=50,limits=c(0,100)) +
+  labs(title="Burnaby 3", x=expression(FEM/FRM~PM[2.5]~Concentration~(μg/m^3)), y=expression(Sensor~PM[2.5]~Concentration~(μg/m^3)), color="RH (%)") +
+  geom_abline(slope=1,linetype="dashed") +
+  xlim(0,30) +
+  ylim(0,30) +
+  coord_equal()
+
+```
+
+## Tabular Statistics
+
+In addition to the tabular data already provided within the "Performance Metrics" section, it is also recommended to provide tabular data on Uptime (%) and number of paired observations in the analysis. Specifically, it is recommended that you report the following:
+
+1. Range of FRM/FEM monitor concentrations over duration of test (μg/m^3^)
+2. Number of 24-hour periods in FRM/FEM monitor measurements with a goal concentration of ≥ 25 μg/m^3^
+3. Number of 24-hour periods outside manufacturer-listed temperature target criteria
+4. Number of 24-hour periods outside manufacturer-listed relative humidity target criteria
+5. Number of concurrently reported sensor concentration values (1 h and 24 h)
+6. Number of paired sensor and FRM/FEM concentration values (1 h and 24 h)
+7. Number of paired 24-hour, normalized concentration and temperature values
+8. Number of paired 24-hour, normalized concentration and relative humidity values
+9. Sensor uptime (%) (1 h and 24 h)
+
+Many of these calculations are simple to do with the "complete.cases" function in R. 
+
+Note that for items 3-4 (# of periods outside manufacturer-listed temperature and relative humidity target criteris) for PurpleAir monitors, according to the manufacturer, each sensor will work effectively in a temperature range of -10-60°C and RH range of 0–99 % [@Yong2016].
+
+Let's start with the calculations. There are many lines of code here, but most are simple steps.
+
+```{r tabular}
+
+## 1. Range of FRM/FEM monitor concentrations over duration of test (μg/m^3^)
+df_1h %>%
+  group_by(Location) %>%
+  summarize(Min=min(data_1h,na.rm=T),
+            Max=max(data_1h,na.rm=T)) %>%
+  kbl(caption="**PM~2.5~ Concentration Range**") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+## 2. Number of 24-hour periods in FRM/FEM monitor measurements with a goal concentration of ≥ 25 μg/m^3^
+df_24h %>%
+  filter(data_24h > 25) %>%
+    count(Location) %>%
+  kbl(caption="**# 24 h Average Data Points Above 25 µg/m^3^**") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+## 3. Number of 24-hour periods outside manufacturer-listed temperature target criteria
+
+# Here we use 'cut' to add breaks to the data based on our known guidelines (-10 to 60)
+
+df_24h_all %>% mutate(
+  range = cut(temp, breaks = c(-Inf,-10, 60, Inf))) %>%
+  group_by(range) %>%
+  summarize(count = n()) %>%
+  kbl(caption="**Range of 24 h T Readings (none outside of range)**") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+## 4. Number of 24-hour periods outside manufacturer-listed relative humidity target criteria
+
+# Here we use 'cut' to add breaks to the data based on our known guidelines (0 to 99)
+
+df_24h_all %>% mutate(
+  range = cut(rel_hum, breaks = c(0, 99, Inf))) %>%
+  group_by(range) %>%
+  summarize(count = n()) %>%
+  kbl(caption="**Range of 24 h RH Readings (none outside of range)**") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+## 5. Number of concurrently reported sensor concentration values (1 h and 24 h) &
+## 6. Number of paired sensor and FRM/FEM concentration values (1 h and 24 h)
+
+# We will tabulate items 5-6 simultaneously. Note this section of code is a little clunky - apologies!
+
+# Get paired number of observations for 1 h and 24 h averages using "complete.cases"
+paired_1h_B1.FEM <- sum(complete.cases(data_1h_Burnaby1,data_1h_FEM))
+paired_1h_B2.FEM <- sum(complete.cases(data_1h_Burnaby2,data_1h_FEM))
+paired_1h_B3.FEM <- sum(complete.cases(data_1h_Burnaby3,data_1h_FEM))
+
+paired_1h_B1.B2 <- sum(complete.cases(data_1h_Burnaby1,data_1h_Burnaby2))
+paired_1h_B1.B3 <- sum(complete.cases(data_1h_Burnaby1,data_1h_Burnaby3))
+paired_1h_B2.B3 <- sum(complete.cases(data_1h_Burnaby2,data_1h_Burnaby3))
+
+paired_24h_B1.FEM <- sum(complete.cases(data_24h_Burnaby1,data_24h_FEM))
+paired_24h_B2.FEM <- sum(complete.cases(data_24h_Burnaby2,data_24h_FEM))
+paired_24h_B3.FEM <- sum(complete.cases(data_24h_Burnaby3,data_24h_FEM))
+
+paired_24h_B1.B2 <- sum(complete.cases(data_24h_Burnaby1,data_24h_Burnaby2))
+paired_24h_B1.B3 <- sum(complete.cases(data_24h_Burnaby1,data_24h_Burnaby3))
+paired_24h_B2.B3 <- sum(complete.cases(data_24h_Burnaby2,data_24h_Burnaby3))
+
+# Store data in a new data frame for reporting
+pairs_names <- c("FEM","Burnaby1","Burnaby2","Burnaby3")
+pairs_1h_FEM <- c(NA,paired_1h_B1.FEM,paired_1h_B2.FEM,paired_1h_B3.FEM)
+pairs_1h_Burnaby1 <- c(paired_1h_B1.FEM,NA,paired_1h_B1.B2,paired_1h_B1.B3)
+pairs_1h_Burnaby2 <- c(paired_1h_B2.FEM,paired_1h_B1.B2,NA,paired_1h_B2.B3)
+pairs_1h_Burnaby3 <- c(paired_1h_B3.FEM,paired_1h_B1.B3,paired_1h_B2.B3,NA)
+pairs_1h <- data.frame(pairs_names,pairs_1h_FEM,pairs_1h_Burnaby1,pairs_1h_Burnaby2,pairs_1h_Burnaby3)
+names(pairs_1h) <- c("Monitor","FEM.1h","Burnaby1.1h","Burnaby2.1h","Burnaby3.1h")
+
+pairs_24h_FEM <- c(NA,paired_24h_B1.FEM,paired_24h_B2.FEM,paired_24h_B3.FEM)
+pairs_24h_Burnaby1 <- c(paired_24h_B1.FEM,NA,paired_24h_B1.B2,paired_24h_B1.B3)
+pairs_24h_Burnaby2 <- c(paired_24h_B2.FEM,paired_24h_B1.B2,NA,paired_24h_B2.B3)
+pairs_24h_Burnaby3 <- c(paired_24h_B3.FEM,paired_24h_B1.B3,paired_24h_B2.B3,NA)
+pairs_24h <- data.frame(pairs_names,pairs_24h_FEM,pairs_24h_Burnaby1,pairs_24h_Burnaby2,pairs_24h_Burnaby3)
+names(pairs_24h) <- c("Monitor","FEM.24h","Burnaby1.24h","Burnaby2.24h","Burnaby3.24h")
+
+pairs_combined <- full_join(pairs_1h,pairs_24h,by="Monitor")
+
+# Print the result in a table
+pairs_combined %>%
+  kbl(caption="**# Paired Sensor-Sensor and Sensor-FEM Measurements**",col.names=c("","FEM","Burnaby1","Burnaby2","Burnaby3","FEM","Burnaby1","Burnaby2","Burnaby3")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c(" " = 1, "1 h" = 4, "24 h" = 4))
+
+## 7. Number of paired 24-hour, normalized concentration and temperature values &
+## 8. Number of paired 24-hour, normalized concentration and relative humidity values
+
+# We will tabulate items 7-8 simultaneously. Note this section of code is a little clunky - apologies!
+
+pairs_met_names <- c("Burnaby1","Burnaby2","Burnaby3")
+
+# Get paired number of 24 h measurements averages using "complete.cases"
+paired_24h_nB1.T <- sum(complete.cases(df_24h_all$norm_Burnaby1,df_24h_all$temp))
+paired_24h_nB2.T <- sum(complete.cases(df_24h_all$norm_Burnaby2,df_24h_all$temp))
+paired_24h_nB3.T <- sum(complete.cases(df_24h_all$norm_Burnaby3,df_24h_all$temp))
+
+paired_24h_nB1.RH <- sum(complete.cases(df_24h_all$norm_Burnaby1,df_24h_all$rel_hum))
+paired_24h_nB2.RH <- sum(complete.cases(df_24h_all$norm_Burnaby2,df_24h_all$rel_hum))
+paired_24h_nB3.RH <- sum(complete.cases(df_24h_all$norm_Burnaby3,df_24h_all$rel_hum))
+
+# Store the data and combine in a new data frame
+pairs_T <- c(paired_24h_nB1.T,paired_24h_nB2.T,paired_24h_nB3.T)
+pairs_RH <- c(paired_24h_nB1.RH,paired_24h_nB2.RH,paired_24h_nB3.RH)
+
+pairs_met <- data.frame(pairs_met_names,pairs_T,pairs_RH)
+
+# Print the result.
+pairs_met %>%
+  kbl(caption="**# 24 h Avg. Paired Normalized Concentration and Met Measurements**",col.names=c("Sensor","T","RH")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+
+## 9. Sensor uptime (%) (1 h and 24 h)
+
+# Determine the maximum number of observations
+max_1h <- nrow(df_1h_precision)
+max_24h <- nrow(df_24h_precision)
+
+# Calculate uptime by adding up rows that are not 'NA' and dividing by max. # of observations
+uptime.1h.B1 <- sum(!is.na(data_1h_Burnaby1)) / max_1h * 100
+uptime.1h.B2 <- sum(!is.na(data_1h_Burnaby2)) / max_1h * 100
+uptime.1h.B3 <- sum(!is.na(data_1h_Burnaby3)) / max_1h * 100
+uptime.24h.B1 <- sum(!is.na(data_24h_Burnaby1)) / max_24h * 100
+uptime.24h.B2 <- sum(!is.na(data_24h_Burnaby2)) / max_24h * 100
+uptime.24h.B3 <- sum(!is.na(data_24h_Burnaby3)) / max_24h * 100
+
+# Store the data and combine in a new data frame
+uptime_1h <- c(uptime.1h.B1,uptime.1h.B2,uptime.1h.B3)
+uptime_24h <- c(uptime.24h.B1,uptime.24h.B2,uptime.24h.B3)
+
+uptime <- data.frame(pairs_met_names,uptime_1h,uptime_24h)
+
+# Print the result.
+uptime %>% 
+  kbl(caption="**Sensor Uptime (%)**",col.names = c("Sensor","1 h","24 h")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+We have now completed all of the main reporting metrics requested in the U.S. EPA Base Testing PM~2.5~ Report. From this analysis, we can conclude that without calibration, these sensors fail to meet some targets (RMSE, NRMSE, SD), but in general are well-correlated to both the regulatory monitoring data and each other. Looking at the data, this was likely skewed by the poorer performance of "Burnaby2" and the wildfire period (in fact the U.S. EPA cautions about very high concentration periods in your data set).
+This is summarized briefly below:
+
+* Accuracy: 
+  + R^2^: Pass. Target is > 0.7 and the mean across all sensors was 0.84 (1 h) and 0.93 (24 h)
+  + Slope: Pass. Target is 1 +/- 0.35 and the mean across all sensors was 1.03 (1 h ) and 0.98 (24 h)
+  + Intercept: Pass. Target is -5 to +5 and the mean across all sensors was 3.16 μg/m^3^ (1 h ) and 3.43 μg/m^3^ (24 h)
+  + RMSE: Fail. Target is ≤ 7 μg/m^3^ and the mean across all sensors was 12.02 μg/m^3^ (1 h ) and 8.47 μg/m^3^ (24 h). This was influenced heavily by sensor "Burnaby2" which seems to have some issues.
+  + NRMSE: Fail. Target is ≤ 30% and the mean across all sensors was 81.52% (1 h ) and 58.02% (24 h). This was likely influenced by the wildfire period. 
+* Precision:
+  + SD: Failed. Target is <5 μg/m^3^ and the mean across all sensors was 51.67 μg/m^3^ (1 h ) and 18.42 μg/m^3^ (24 h). This was likely skewed by the poorer performance of "Burnaby2" and the high concentrations during the wildfire period.
+  + CV(%): Pass. Target is <30%. For both 1 h and 24 h calculations this was < 10%.
+* Remaining Tabular Statistics: All pass. Exceptional uptime.
+
+
+# Part 3: Building Calibration Models
+
+The last thing we will consider is building a calibration model. Most low-cost PM sensors have relied on multiple linear regression with parameters such as temperature, relative humidity and dew point. Many low-cost sensors measure temperature and relative humidity, however, these are not always reliable (if they are affected by internal heating or conditions within the sensor), and so models should be built using external met stations if possible. Let's consider building a calibration model for sensor "Burnaby1" at 1 hour time resolution and look at some techniques for assessing model performance.
+
+This is mostly for demonstration purposes - the raw performance of Burnaby1 was reasonably good based on Part 2. However, illustrating some approaches is still useful. Let's begin.
+
+## Prepare the data
+
+Before we begin, we will need to extract the relevant data for model building and separate it into testing and training data sets. A typical testing-training split is 80:20. We will use the caret package to achieve this splitting [@R-caret].
+
+```{r cal_prep}
+
+# We already downloaded the hourly weather data, we need to now join it to the 1 h data.
+
+weather_1h <- rename(weather_1h,datetime_1h=date)
+df_calibration <- full_join(df_1h_precision,weather_1h,by="datetime_1h")
+
+# Let's select the columns we are interested in including in our multiple linear regression model
+
+df_calibration <- df_calibration %>% select(FEM,Burnaby1,temp,rel_hum,temp_dew)
+
+# We will only keep complete cases for model building (every column has a measurement.)
+
+df_calibration <- df_calibration[complete.cases(df_calibration),]
+
+# Make an index for splitting data into training and testing
+
+data_split <- createDataPartition(df_calibration$FEM, times=1, list=F,p=0.8)
+data_train <- df_calibration[data_split,]
+data_test <- df_calibration[-data_split,]
+
+```
+
+## Build sample models
+
+As a demonstration, we will consider every linear combination of the sensor signal, the temperature, the relative humidity and the dew point in our model building. There are numerous options for calibration, but this will not be the focus of the tutorial. The primary goal is to illustrate how model performance can be assessed. As such, do not consider these models as your only option, just some example models to look at performance metrics. 
+
+```{r linear_models}
+# Model A: Including all parameters 
+lm_model.A <- lm(FEM ~ Burnaby1 + temp + rel_hum + temp_dew,
+                    data = data_train)
+
+# Model B: Exclude dew point
+lm_model.B <- lm(FEM ~ Burnaby1 + temp + rel_hum,
+                    data = data_train)
+
+# Model C: Exclude relative humidity
+lm_model.C <- lm(FEM ~ Burnaby1 + temp + temp_dew,
+                    data = data_train)
+
+# Model D: Exclude temperature
+lm_model.D <- lm(FEM ~ Burnaby1 + rel_hum + temp_dew,
+                    data = data_train)
+
+# Model E: Only include FEM and temperature
+lm_model.E <- lm(FEM ~ Burnaby1 + temp,
+                    data = data_train)
+
+# Model F: Only include FEM and relative humidity
+lm_model.F <- lm(FEM ~ Burnaby1 + rel_hum,
+                    data = data_train)
+
+# Model G: Only include FEM and dew point
+lm_model.G <- lm(FEM ~ Burnaby1 + temp_dew,
+                    data = data_train)
+
+# Model H: Only include FEM (identical to Part 2, accuracy calculations)
+lm_model.H <- lm(FEM ~ FEM,
+                    data = data_train)
+
+## Note: I know the following models will be poor already. Mostly for demo purposes
+
+# Model I: Only include temperature
+lm_model.I <- lm(FEM ~ temp,
+                    data = data_train)
+
+# Model I: Only include relative humidity
+lm_model.J <- lm(FEM ~ rel_hum,
+                    data = data_train)
+
+# Model I: Only include dew point
+lm_model.K <- lm(FEM ~ temp_dew,
+                    data = data_train)
+
+# Predict the testing data concentrations with our models
+predict_model.A <- predict(lm_model.A,data_test)
+predict_model.B <- predict(lm_model.B,data_test)
+predict_model.C <- predict(lm_model.C,data_test)
+predict_model.D <- predict(lm_model.D,data_test)
+predict_model.E <- predict(lm_model.E,data_test)
+predict_model.F <- predict(lm_model.F,data_test)
+predict_model.G <- predict(lm_model.G,data_test)
+predict_model.H <- predict(lm_model.H,data_test)
+predict_model.I <- predict(lm_model.I,data_test)
+predict_model.J <- predict(lm_model.J,data_test)
+predict_model.K <- predict(lm_model.K,data_test)
+measured_test <- data_test %>% pull(FEM)
+
+# Store the data
+df_cal_fit <- data.frame(predict_model.A,predict_model.B,predict_model.C,predict_model.D,predict_model.E,predict_model.F,predict_model.G,predict_model.H,predict_model.I,predict_model.J,predict_model.K,measured_test)
+df_cal_fit_long <- df_cal_fit %>% 
+  pivot_longer(cols=starts_with("predict_"),names_to="model",names_prefix="predict_model.",values_to="predicted_test")
+df_cal_fit_long <- setDT(df_cal_fit_long)
+```
+
+## Assess models
+
+We will assess models in 2 ways: 
+
+1. Taylor Diagrams which provide a quick visual snapshot of three metrics:
+  + Standard deviation, which is measured based on radial distance to the marker
+  + Correlation coefficient
+  + Centered RMSE
+2. Tabular data of R^2^ and standard error
+
+The Taylor Diagram is easily constructed using the "TaylorDiagram" function in the R Package "openair" [@R-openair]. To read more about interpreting Taylor Diagrams please [see the openair book, section 21](https://bookdown.org/david_carslaw/openair/sec-TaylorDiagram.html). 
+
+```{r model_performance}
+TaylorDiagram(df_cal_fit_long, obs = "measured_test", mod = "predicted_test", group = "model")
+
+summary.A <- glance(lm_model.A)
+summary.B <- glance(lm_model.B)
+summary.C <- glance(lm_model.C)
+summary.D <- glance(lm_model.D)
+summary.E <- glance(lm_model.E)
+summary.F <- glance(lm_model.F)
+summary.G <- glance(lm_model.G)
+summary.H <- glance(lm_model.H)
+summary.I <- glance(lm_model.I)
+summary.J <- glance(lm_model.J)
+summary.K <- glance(lm_model.K)
+
+summary_all_models <- bind_rows(summary.A,summary.B,summary.C,summary.D,summary.E,summary.F,summary.G,summary.H,summary.I,summary.J,summary.K)  %>%
+  mutate(modelID=c("A","B","C","D","E","F","G","H","I","J","K"))
+
+summary_all_models %>% select(modelID,r.squared,sigma) %>%
+  kbl(caption="**Some Model Performance Metrics**",col.names = c("Model ID","R^2^","Standard Error"),digits=3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+From this, we can see that even without any corrections, the PurpleAir monitors are well correlated to the FEM monitors (model H). Adding corrections for relative humidity help a little, but the reductions in standard error (and increases in R^2^) are very small. Nevertheless, this demonstration may be useful for others considering their own calibration approaches. 
+
+Congratulations! You have reached the end of the tutorial. Good luck!
+
+## References
