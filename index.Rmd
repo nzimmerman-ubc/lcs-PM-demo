@@ -8,7 +8,7 @@ output:
     toc_float: true
     theme: yeti
     code_download: true
-    code_folding: hide
+    code_folding: show
 bibliography: biblio.bib
 link-citations: yes
 ---
