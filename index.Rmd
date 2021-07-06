@@ -9,6 +9,7 @@ output:
     theme: yeti
     code_download: true
     code_folding: show
+    keep_tex: yes
 bibliography: biblio.bib
 link-citations: yes
 ---
@@ -494,7 +495,7 @@ $$RMSE=\sqrt{\frac{1}{N\times M}\sum_{j=1}^{M}\sum_{i=1}^{N}(y_{ij} -x_i)^2}$$
 
 The NRMSE helps account for periods when ambient concentrations are high (which may skew the RMSE). It is calculated by normalizing the RMSE by the average concentration measured by the FEM/FRM monitor.
 
-$$NRMSE = \frac{RMSE}{\bar{y}}\times100$$
+$$NRMSE = \frac{RMSE}{\bar{x}}\times100$$
 
 **Standard Deviation**
 
@@ -537,12 +538,13 @@ slopes_1h <- model_params_1h %>% filter(term=="FEM") %>% select(Location,estimat
 intercepts_1h <- model_params_1h %>% filter(term=="(Intercept)") %>% select(Location,estimate) %>% rename(.,intercept_1h=estimate)
 r2_1h <- model_stats_1h %>% select(Location,r.squared) %>% rename(.,r2_1h=r.squared)
 
-# RMSE and NRMSE: Manual calculations
+# RMSE and NRMSE: Manual calculations. 
 
+# Calculate RMSE and NRMSE
 RMSE_1h <- df_1h_accuracy %>%
   group_by(Location) %>%
   summarize(RMSE_1h=sqrt(mean(sq.residual,na.rm=T)),
-            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(data_1h,na.rm=T)*100)
+            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(FEM,na.rm=T)*100)
 
 accuracy_1h <-  left_join(r2_1h, slopes_1h, by='Location') %>%
                 left_join(., intercepts_1h, by='Location') %>%
@@ -571,7 +573,7 @@ r2_24h <- model_stats_24h %>% select(Location,r.squared) %>% rename(.,r2_24h=r.s
 RMSE_24h <- df_24h_accuracy %>%
   group_by(Location) %>%
   summarize(RMSE_24h=sqrt(mean(sq.residual,na.rm=T)),
-            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(data_24h,na.rm=T)*100)
+            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(FEM, na.rm=T)*100)
 
 accuracy_24h <-  left_join(r2_24h, slopes_24h, by='Location') %>%
                 left_join(., intercepts_24h, by='Location') %>%
@@ -599,29 +601,33 @@ accuracy %>%
 
 Now we will plot the results using box plots. 
 
-```{r plot_accuracy, fig.show="hold", out.width="50%"}
+```{r plot_accuracy, fig.show="hold", out.width="50%", message=FALSE, warning=FALSE}
 # Prep data for box plots
 
 ggplot(accuracy_long,aes(x=avg.time,y=r2,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
   xlab("Averaging Time") +
   ylab(expression(R^2)) +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=slope,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
   xlab("Averaging Time") +
   ylab("Slope") +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=intercept,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
   xlab("Averaging Time") +
   ylab(expression(Intercept~(μg/m^3))) +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=RMSE,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
   xlab("Averaging Time") +
   ylab(expression(RMSE~(μg/m^3))) +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
@@ -727,18 +733,22 @@ intercepts_1h_low <- model_params_1h_low %>% filter(term=="(Intercept)") %>% sel
 r2_1h_low <- model_stats_1h_low %>% select(Location,r.squared) %>% rename(.,r2_1h=r.squared)
 
 # RMSE and NRMSE: Manual calculations
+avg_1h_high <-df_1h_accuracy %>%
+  filter(FEM >= 25) %>%
+  summarize(mean(FEM,na.rm=T))
+
 
 RMSE_1h_high <- df_1h_accuracy %>%
   filter(FEM >= 25) %>%
   group_by(Location) %>%
   summarize(RMSE_1h=sqrt(mean(sq.residual,na.rm=T)),
-            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(data_1h,na.rm=T)*100)
+            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(FEM,na.rm=T)*100)
 
 RMSE_1h_low <- df_1h_accuracy %>%
   filter(FEM < 25) %>%
   group_by(Location) %>%
   summarize(RMSE_1h=sqrt(mean(sq.residual,na.rm=T)),
-            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(data_1h,na.rm=T)*100)
+            NRMSE_1h=sqrt(mean(sq.residual,na.rm=T))/mean(FEM,na.rm=T)*100)
 
 accuracy_1h_low <-  left_join(r2_1h_low, slopes_1h_low, by='Location') %>%
                 left_join(., intercepts_1h_low, by='Location') %>%
@@ -778,13 +788,13 @@ RMSE_24h_high <- df_24h_accuracy %>%
   filter(FEM >= 25) %>%
   group_by(Location) %>%
   summarize(RMSE_24h=sqrt(mean(sq.residual,na.rm=T)),
-            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(data_24h,na.rm=T)*100)
+            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(FEM,na.rm=T)*100)
 
 RMSE_24h_low <- df_24h_accuracy %>%
   filter(FEM < 25) %>%
   group_by(Location) %>%
   summarize(RMSE_24h=sqrt(mean(sq.residual,na.rm=T)),
-            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(data_24h,na.rm=T)*100)
+            NRMSE_24h=sqrt(mean(sq.residual,na.rm=T))/mean(FEM,na.rm=T)*100)
 
 accuracy_24h_low <-  left_join(r2_24h_low, slopes_24h_low, by='Location') %>%
                 left_join(., intercepts_24h_low, by='Location') %>%
@@ -829,7 +839,7 @@ accuracy_low %>%
 
 ```
 
-In this scenario, the split analysis provides useful insight: the PurpleAir monitors are tending to overestimate at low concentrations (slopes > 1) and underestimate during the wildfire period (slopes < 1). This suggests we might also need piece-wise calibrations for low and high concentrations, such as what is discussed in the literature [@Malings2020]. We will demonstrate this in Part 3.
+In this scenario, the split analysis provides useful insight: the PurpleAir monitors are tending to overestimate at low concentrations (slopes > 1) and underestimate during the wildfire period (slopes < 1). This suggests we might also need piece-wise calibrations for low and high concentrations, such as what is discussed in the literature [@Malings2020]. We will demonstrate this in Part 3. We also see that the sensors seem to be more accurate at high concentration; NRMSE is generally below 30% for high concentration data.
 
 ## Meteorological Conditions During Deployment
 
@@ -1105,7 +1115,7 @@ This is summarized briefly below:
   + Slope: Pass. Target is 1 +/- 0.35 and the mean across all sensors was 1.03 (1 h ) and 0.98 (24 h)
   + Intercept: Pass. Target is -5 to +5 and the mean across all sensors was 3.16 μg/m^3^ (1 h ) and 3.43 μg/m^3^ (24 h)
   + RMSE: Fail. Target is ≤ 7 μg/m^3^ and the mean across all sensors was 12.02 μg/m^3^ (1 h ) and 8.47 μg/m^3^ (24 h). This was influenced heavily by sensor "Burnaby2" which seems to have some issues.
-  + NRMSE: Fail. Target is ≤ 30% and the mean across all sensors was 81.52% (1 h ) and 58.02% (24 h). This was likely influenced by the wildfire period. 
+  + NRMSE: Fail. Target is ≤ 30% and the mean across all sensors was 117.85% (1 h ) and 74.66% (24 h). This was likely influenced by the wildfire period. 
 * Precision:
   + SD: Failed. Target is <5 μg/m^3^ and the mean across all sensors was 51.67 μg/m^3^ (1 h ) and 18.42 μg/m^3^ (24 h). This was likely skewed by the poorer performance of "Burnaby2" and the high concentrations during the wildfire period.
   + CV(%): Pass. Target is <30%. For both 1 h and 24 h calculations this was < 10%.
