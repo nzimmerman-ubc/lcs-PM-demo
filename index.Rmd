@@ -606,35 +606,35 @@ Now we will plot the results using box plots.
 
 ggplot(accuracy_long,aes(x=avg.time,y=r2,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, show.legend=F) +
   xlab("Averaging Time") +
   ylab(expression(R^2)) +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=slope,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, show.legend=F) +
   xlab("Averaging Time") +
   ylab("Slope") +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=intercept,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, show.legend=F) +
   xlab("Averaging Time") +
   ylab(expression(Intercept~(μg/m^3))) +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=RMSE,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, show.legend=F) +
   xlab("Averaging Time") +
   ylab(expression(RMSE~(μg/m^3))) +
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
 
 ggplot(accuracy_long,aes(x=avg.time,y=NRMSE,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, show.legend=F) +
   xlab("Averaging Time") +
   ylab("NRMSE (%)") + 
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
