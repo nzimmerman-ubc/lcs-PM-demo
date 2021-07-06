@@ -503,7 +503,7 @@ This is the standard deviation of the sensor PM_2.5_ concentration measurements.
 
 $$SD=\sqrt{\frac{1}{(N\times M)-1}\sum_{j=1}^{M}\sum_{d=1}^{N}(y_{dj} -\bar{y_d})^2}$$
 
-Where M is the number of identical sensors operated simultaneously, N is the number of periods during which all instruments are operating and reporting valid data, x~dj~ is the average concentration for day or hour _d_ and sensor _j_, and $\bar{y_d}$ is the average concentration across all sensors for day or hour _d_.
+Where M is the number of identical sensors operated simultaneously, N is the number of periods during which all instruments are operating and reporting valid data, y~dj~ is the average concentration for day or hour _d_ and sensor _j_, and $\bar{y_d}$ is the average concentration across all sensors for day or hour _d_.
 
 **Coefficient of Variation (CV)**
 
@@ -634,6 +634,7 @@ ggplot(accuracy_long,aes(x=avg.time,y=RMSE,fill=avg.time)) +
 
 ggplot(accuracy_long,aes(x=avg.time,y=NRMSE,fill=avg.time)) +
   geom_boxplot(show.legend = F) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
   xlab("Averaging Time") +
   ylab("NRMSE (%)") + 
   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=20))
