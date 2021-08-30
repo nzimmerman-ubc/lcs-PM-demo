@@ -1,0 +1,24 @@
+---
+output: 
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float: true 
+
+---
+<br>
+
+# Guidelines
+
+Take the following quiz to give some insights into some considerations for siting, power and connectivity, depending on the configuration you are interested in!
+
+<br>
+
+<iframe width="392" height="620" style="border: 0px;" src="https://studio.code.org/projects/applab/C9mX4ZVy_k6-mD7bVWXDFcV9WgLmhKFNUFFowkw8BpR/embed?nosource" data-external="1"></iframe>
+
+<br>
+
+# How did you build this?
+
+This quiz was built in App Lab from Code.org. You can build simple apps quickly and easily (and it's a great teaching tool!). [Try it here](https://code.org/educate/applab)
+

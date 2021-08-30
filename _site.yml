@@ -2,7 +2,9 @@ output_dir: "."
 navbar:
     title: "Low-Cost PM Sensor Tutorial"
     left:
-      - text: "Tutorial"
+      - text: "Performance Assessment Tutorial"
         href: index.html
+      - text: "Sensor Guidelines Quiz"
+        href: guidelines.html
       - text: "About"
         href: about.html
