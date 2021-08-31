@@ -1,4 +1,5 @@
 ---
+title: "About"
 output: 
   html_document:
     theme: yeti
@@ -6,9 +7,6 @@ output:
     toc_float: true 
 
 ---
-<br>
-
-# About
 
 This website was created in tandem with the article submitted to the _Journal of Aerosol Science_ entitled "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". You can read the full article here: [Will link to DOI and full article when available]
 

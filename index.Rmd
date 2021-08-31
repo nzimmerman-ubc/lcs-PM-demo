@@ -1158,45 +1158,33 @@ data_test <- df_calibration[-data_split,]
 
 ## Build sample models
 
-As a demonstration, we will consider every linear combination of the sensor signal, the temperature, the relative humidity and the dew point in our model building. Given the results of separating the high concentration and low concentration and the change in slope (Part 2, Performance Metrics), we will also try three piecewise regression models. We will take advantage of the "segmented" package to determine the split point in PurpleAir monitor concentration [@R-segmented;@Muggeo2003]. We will duplicate models A, B and H using the piecewise regression approach.
+As a demonstration, we will consider every linear combination of the sensor signal, the relative humidity and the dew point in our model building. We are excluding temperature as it was previously shown to have limited influence (Part 2, Meteoroloigcal influence). Given the results of separating the high concentration and low concentration and the change in slope (Part 2, Performance Metrics), we will also try three piecewise regression models. We will take advantage of the "segmented" package to determine the split point in PurpleAir monitor concentration [@R-segmented;@Muggeo2003]. We will duplicate models A, B and H using the piecewise regression approach.
 
 A note: There are numerous options for calibration, but this will not be the focus of the tutorial. The primary goal is to illustrate how model performance can be assessed. As such, do not consider these models as your only option, just some example models to look at performance metrics. 
 
 ```{r linear_models}
 # Model A: Including all parameters 
-lm_model.A <- lm(FEM ~ Burnaby1 + temp + rel_hum + temp_dew, data = data_train)
+lm_model.A <- lm(FEM ~ Burnaby1 + rel_hum + temp_dew, data = data_train)
 
 # Model B: Exclude dew point
-lm_model.B <- lm(FEM ~ Burnaby1 + temp + rel_hum, data = data_train)
+lm_model.B <- lm(FEM ~ Burnaby1 + rel_hum, data = data_train)
 
 # Model C: Exclude relative humidity
-lm_model.C <- lm(FEM ~ Burnaby1 + temp + temp_dew, data = data_train)
+lm_model.C <- lm(FEM ~ Burnaby1 + temp_dew, data = data_train)
 
-# Model D: Exclude temperature
-lm_model.D <- lm(FEM ~ Burnaby1 + rel_hum + temp_dew, data = data_train)
-
-# Model E: Only include sensor and temperature
-lm_model.E <- lm(FEM ~ Burnaby1 + temp, data = data_train)
-
-# Model F: Only include sensor and relative humidity
-lm_model.F <- lm(FEM ~ Burnaby1 + rel_hum, data = data_train)
-
-# Model G: Only include sensor and dew point
-lm_model.G <- lm(FEM ~ Burnaby1 + temp_dew, data = data_train)
-
-# Model H: Only include sensor as predictor of FEM
-lm_model.H <- lm(FEM ~ Burnaby1, data = data_train)
+# Model D: Only include sensor as predictor of FEM
+lm_model.D <- lm(FEM ~ Burnaby1, data = data_train)
 
 ## Let's also try some segmented (piecewise) models based on what we learned in Part 2. We will use the 'segmented' package, and use 1 break.
 
-# Model I: Segmented model - just sensor and FEM monitor
-lm_model.I <- segmented(lm(FEM ~ Burnaby1,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
+# Model E: Segmented model - just sensor and FEM monitor
+lm_model.E <- segmented(lm(FEM ~ Burnaby1,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
 
-# Model J: Segmented model - Sensor + temp and relative humidity
-lm_model.J <- segmented(lm(FEM ~ Burnaby1+temp+rel_hum,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
+# Model F: Segmented model - Sensor + temp and relative humidity
+lm_model.F <- segmented(lm(FEM ~ Burnaby1+rel_hum,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
 
-# Model K: Segmented model = Sensor + temp + relative humidty + dew point
-lm_model.K <- segmented(lm(FEM ~ Burnaby1+temp+rel_hum+temp_dew,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
+# Model G: Segmented model = Sensor +  relative humidty + dew point
+lm_model.G <- segmented(lm(FEM ~ Burnaby1+rel_hum+temp_dew,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
 
 
 
@@ -1208,14 +1196,11 @@ predict_model.D <- predict(lm_model.D,data_test)
 predict_model.E <- predict(lm_model.E,data_test)
 predict_model.F <- predict(lm_model.F,data_test)
 predict_model.G <- predict(lm_model.G,data_test)
-predict_model.H <- predict(lm_model.H,data_test)
-predict_model.I <- predict(lm_model.I,data_test)
-predict_model.J <- predict(lm_model.J,data_test)
-predict_model.K <- predict(lm_model.K,data_test)
+
 measured_test <- data_test %>% pull(FEM)
 
 # Store the data
-df_cal_fit <- data.frame(predict_model.A,predict_model.B,predict_model.C,predict_model.D,predict_model.E,predict_model.F,predict_model.G,predict_model.H,predict_model.I,predict_model.J,predict_model.K,measured_test)
+df_cal_fit <- data.frame(predict_model.A,predict_model.B,predict_model.C,predict_model.D,predict_model.E,predict_model.F,predict_model.G,measured_test)
 df_cal_fit_long <- df_cal_fit %>% 
   pivot_longer(cols=starts_with("predict_"),names_to="model",names_prefix="predict_model.",values_to="predicted_test")
 df_cal_fit_long <- setDT(df_cal_fit_long)
@@ -1233,8 +1218,8 @@ We will assess models in 2 ways:
 
 The Taylor Diagram is easily constructed using the "TaylorDiagram" function in the R Package "openair" [@R-openair]. To read more about interpreting Taylor Diagrams please [see the openair book, section 21](https://bookdown.org/david_carslaw/openair/sec-TaylorDiagram.html). 
 
-```{r model_performance}
-TaylorDiagram(df_cal_fit_long, obs = "measured_test", mod = "predicted_test", group = "model")
+```{r model_performance, fig.show="hold", out.width="50%"}
+
 
 summary.A <- glance(lm_model.A)
 summary.B <- glance(lm_model.B)
@@ -1243,45 +1228,44 @@ summary.D <- glance(lm_model.D)
 summary.E <- glance(lm_model.E)
 summary.F <- glance(lm_model.F)
 summary.G <- glance(lm_model.G)
-summary.H <- glance(lm_model.H)
-summary.I <- glance(lm_model.I)
-summary.J <- glance(lm_model.J)
-summary.K <- glance(lm_model.K)
 
-summary_all_models <- bind_rows(summary.A,summary.B,summary.C,summary.D,summary.E,summary.F,summary.G,summary.H,summary.I,summary.J,summary.K)  %>%
-  mutate(modelID=c("A","B","C","D","E","F","G","H","I","J","K"))
+summary_all_models <- bind_rows(summary.A,summary.B,summary.C,summary.D,summary.E,summary.F,summary.G)  %>%
+  mutate(modelID=c("A","B","C","D","E","F","G"))
+
+taylor <- TaylorDiagram(df_cal_fit_long, obs = "measured_test", mod = "predicted_test", group = "model", main="Taylor Diagram")
+zoomed <- TaylorDiagram(df_cal_fit_long, obs = "measured_test", mod = "predicted_test", group = "model",xlim=c(19,23),ylim=c(4,10), main="Zoomed In")
 
 summary_all_models %>% select(modelID,r.squared,sigma) %>%
   kbl(caption="**Some Model Performance Metrics**",col.names = c("Model ID","R^2^","Standard Error"),digits=3) %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-From this, we can see that even without any corrections, the PurpleAir monitors are well correlated to the FEM monitors (model H). The segmented models (I-K) have notably better performance than the linear models across all concentration ranges, as was expected based on the Performance Metrics assessment split across 2 different concentration ranges.
+From this, we can see that even without any corrections, the PurpleAir monitors are well correlated to the FEM monitors (model D). The segmented models (E-G) have notably better performance than the linear models across all concentration ranges, as was expected based on the Performance Metrics assessment split across 2 different concentration ranges.
 
-The 'segmented' model automatically chooses the break point. Let's see what break point it chose for models I-K.
+The 'segmented' model automatically chooses the break point. Let's see what break point it chose for models E-G.
 
 ```{r breakpoint}
 
-breakpt.I <- summary.segmented(lm_model.I)$psi[2]
-breakpt.J <- summary.segmented(lm_model.J)$psi[2]
-breakpt.K <- summary.segmented(lm_model.K)$psi[2]
-breakpts <- c(breakpt.I,breakpt.J,breakpt.J)
-breakpts_ID <- c("Model I", "Model J", "Model K")
+breakpt.E <- summary.segmented(lm_model.E)$psi[2]
+breakpt.F <- summary.segmented(lm_model.F)$psi[2]
+breakpt.G <- summary.segmented(lm_model.G)$psi[2]
+breakpts <- c(breakpt.E,breakpt.F,breakpt.G)
+breakpts_ID <- c("Model E", "Model F", "Model G")
 df_breakpoints <- data.frame(breakpts_ID,breakpts) 
 df_breakpoints %>%
   kbl(caption="**Summary of breakpoint location (μg/m^3^)**",digits=2, col.names=c("Model ID","Breakpoint")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-As we can see, in all models, the break point is very similar, around 32 μg/m^3^. Let's visualize this break point for our best performing model (model J). This will be the last step in our tutorial.
+As we can see, in all models, the break point is very similar, around 32 μg/m^3^. Let's visualize this break point for our best performing model (model F). This will be the last step in our tutorial.
 
 ```{r breakpoint_plot}
-df.model.J <- data_train %>%
-  mutate(seg.fit.J = broken.line(lm_model.J)$fit)
+df.model.F <- data_train %>%
+  mutate(seg.fit.F = broken.line(lm_model.F)$fit)
 
-ggplot(df.model.J, aes(x = Burnaby1, y = FEM)) + 
+ggplot(df.model.F, aes(x = Burnaby1, y = FEM)) + 
   geom_point(alpha=0.5) +
-  geom_line(aes(x = Burnaby1, y = seg.fit.J), color = 'red', linetype='dashed',size=1) +
+  geom_line(aes(x = Burnaby1, y = seg.fit.F), color = 'red', linetype='dashed',size=1) +
   xlab(expression(Reported~Sensor~PM[2.5]~Concentration~(μg/m^3))) +
   ylab(expression(Measured~PM[2.5]~Concentration~(μg/m^3))) +
   ggtitle("Break point visualization: Sensor Burnaby1") +
