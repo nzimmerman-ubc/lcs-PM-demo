@@ -1,7 +1,7 @@
 ---
 title: "Low-Cost PM Sensor Tutorial"
 author: "Dr. Naomi Zimmerman"
-date: "`r Sys.Date()`"
+date: "Last Updated: `r Sys.Date()`"
 output: 
   html_document:
     toc: true
@@ -34,7 +34,7 @@ This tutorial broadly covers validation approaches for low-cost PM~2.5~ sensor d
 
 This tutorial is a companion to the _Journal of Aerosol Science_ article "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". When using this data or code please cite the corresponding paper:
 
-**N. Zimmerman**, (2021). "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". _Journal of Aerosol Science_, in review.
+**N. Zimmerman**, (2021). "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". _Journal of Aerosol Science_, in press. (https://doi.org/10.1016/j.jaerosci.2021.105872)
 
 One can also consider citing this web app directly:
 
@@ -1180,7 +1180,7 @@ lm_model.D <- lm(FEM ~ Burnaby1, data = data_train)
 # Model E: Segmented model - just sensor and FEM monitor
 lm_model.E <- segmented(lm(FEM ~ Burnaby1,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
 
-# Model F: Segmented model - Sensor + temp and relative humidity
+# Model F: Segmented model - Sensor + relative humidity
 lm_model.F <- segmented(lm(FEM ~ Burnaby1+rel_hum,data = data_train), seg.Z = ~Burnaby1, psi=NA, control = seg.control(K=1))
 
 # Model G: Segmented model = Sensor +  relative humidty + dew point
