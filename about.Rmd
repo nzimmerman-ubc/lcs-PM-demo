@@ -8,7 +8,7 @@ output:
 
 ---
 
-This website was created in tandem with the article submitted to the _Journal of Aerosol Science_ entitled "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". You can read the full article here: [Will link to DOI and full article when available]
+This website was created in tandem with the article submitted to the _Journal of Aerosol Science_ entitled "Tutorial: Guidelines for Implementing Low-Cost Sensor Networks for Aerosol Monitoring". You can read the full article here: (https://doi.org/10.1016/j.jaerosci.2021.105872)
 
 <br>
 
